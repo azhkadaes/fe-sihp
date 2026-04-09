@@ -234,5 +234,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-import { toast } from 'sonner';
