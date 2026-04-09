@@ -5,9 +5,10 @@ import { ThemeToggle } from '@/components/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import {
   LayoutDashboard, Store, Package, Building2, ClipboardList, BarChart3,
-  Menu, X, LogOut, ChevronDown,
+  Menu, X, LogOut, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const menuItems = [
   { title: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
@@ -21,13 +22,13 @@ const menuItems = [
 export default function AppLayout() {
   const { logout } = useAuth();
   const location = useLocation();
+  const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const isActive = (path: string) => location.pathname.startsWith(path);
-  const currentPage = menuItems.find(m => isActive(m.path));
 
-  // Close menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -38,93 +39,120 @@ export default function AppLayout() {
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  // Close on route change
   useEffect(() => { setMenuOpen(false); }, [location.pathname]);
 
-  return (
-    <div className="min-h-screen flex flex-col">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
-        <div className="flex h-14 items-center justify-between px-4 max-w-7xl mx-auto">
-          <div className="flex items-center gap-3">
+  // Mobile: top navbar with burger
+  if (isMobile) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+          <div className="flex h-14 items-center justify-between px-4">
             <span className="text-base font-bold text-accent tracking-tight">Harga Pangan</span>
-            <span className="hidden sm:inline text-xs text-muted-foreground">Backoffice</span>
-          </div>
-
-          {/* Desktop nav links */}
-          <nav className="hidden md:flex items-center gap-1">
-            {menuItems.map(item => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  'flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-                  isActive(item.path)
-                    ? 'bg-accent/15 text-accent'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <div ref={menuRef}>
+                <Button variant="ghost" size="icon" onClick={() => setMenuOpen(!menuOpen)}>
+                  {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                </Button>
+                {menuOpen && (
+                  <div className="absolute left-0 right-0 top-14 bg-card border-b shadow-lg animate-in slide-in-from-top-2 duration-200 z-50">
+                    <nav className="flex flex-col p-2">
+                      {menuItems.map(item => (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          className={cn(
+                            'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors',
+                            isActive(item.path)
+                              ? 'bg-accent/15 text-accent'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                        >
+                          <item.icon className="h-5 w-5" />
+                          <span>{item.title}</span>
+                        </Link>
+                      ))}
+                      <div className="border-t mt-2 pt-2">
+                        <button
+                          onClick={() => { logout(); setMenuOpen(false); }}
+                          className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 w-full"
+                        >
+                          <LogOut className="h-5 w-5" />
+                          <span>Keluar</span>
+                        </button>
+                      </div>
+                    </nav>
+                  </div>
                 )}
-              >
-                <item.icon className="h-4 w-4" />
-                <span>{item.title}</span>
-              </Link>
-            ))}
-          </nav>
-
-          <div className="flex items-center gap-2">
-            <ThemeToggle />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={logout}
-              className="hidden md:flex items-center gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="text-sm">Keluar</span>
-            </Button>
-
-            {/* Mobile burger */}
-            <div className="md:hidden" ref={menuRef}>
-              <Button variant="ghost" size="icon" onClick={() => setMenuOpen(!menuOpen)}>
-                {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </Button>
-
-              {/* Dropdown menu - drops down from navbar */}
-              {menuOpen && (
-                <div className="absolute left-0 right-0 top-14 bg-card border-b shadow-lg animate-in slide-in-from-top-2 duration-200">
-                  <nav className="flex flex-col p-2 max-w-7xl mx-auto">
-                    {menuItems.map(item => (
-                      <Link
-                        key={item.path}
-                        to={item.path}
-                        className={cn(
-                          'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors',
-                          isActive(item.path)
-                            ? 'bg-accent/15 text-accent'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                      >
-                        <item.icon className="h-5 w-5" />
-                        <span>{item.title}</span>
-                      </Link>
-                    ))}
-                    <div className="border-t mt-2 pt-2">
-                      <button
-                        onClick={() => { logout(); setMenuOpen(false); }}
-                        className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 w-full"
-                      >
-                        <LogOut className="h-5 w-5" />
-                        <span>Keluar</span>
-                      </button>
-                    </div>
-                  </nav>
-                </div>
-              )}
+              </div>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
+        <main className="flex-1 p-4">
+          <Outlet />
+        </main>
+      </div>
+    );
+  }
 
-      <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6">
+  // Desktop/Tablet: sidebar layout
+  return (
+    <div className="min-h-screen flex">
+      {/* Sidebar */}
+      <aside className={cn(
+        'sticky top-0 h-screen border-r bg-sidebar flex flex-col transition-all duration-200 shrink-0',
+        collapsed ? 'w-16' : 'w-56'
+      )}>
+        {/* Logo */}
+        <div className="h-14 flex items-center justify-between px-3 border-b">
+          {!collapsed && <span className="text-base font-bold text-accent truncate">Harga Pangan</span>}
+          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setCollapsed(c => !c)}>
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </Button>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
+          {menuItems.map(item => (
+            <Link
+              key={item.path}
+              to={item.path}
+              title={collapsed ? item.title : undefined}
+              className={cn(
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                collapsed && 'justify-center px-0',
+                isActive(item.path)
+                  ? 'bg-sidebar-accent/15 text-accent'
+                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground'
+              )}
+            >
+              <item.icon className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>{item.title}</span>}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Footer */}
+        <div className="border-t p-2 space-y-1">
+          <div className={cn('flex items-center', collapsed ? 'justify-center' : 'px-2')}>
+            <ThemeToggle />
+          </div>
+          <button
+            onClick={logout}
+            title={collapsed ? 'Keluar' : undefined}
+            className={cn(
+              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 w-full transition-colors',
+              collapsed && 'justify-center px-0'
+            )}
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            {!collapsed && <span>Keluar</span>}
+          </button>
+        </div>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 min-w-0 p-6 max-w-7xl mx-auto w-full">
         <Outlet />
       </main>
     </div>

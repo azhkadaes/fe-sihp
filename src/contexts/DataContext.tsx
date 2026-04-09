@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
-import type { Pasar, Komoditas, TempatUsaha, KomoditasDijual, HargaRutin, HargaPelaporan, SatuanDasar } from '@/types';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import type { Pasar, Komoditas, TempatUsaha, KomoditasDijual, HargaRutin, HargaPelaporan, KelasKomoditas } from '@/types';
 
 function load<T>(key: string, fallback: T[]): T[] {
   try {
@@ -35,6 +35,7 @@ interface DataContextType {
   updateHargaRutin: (id: string, h: Partial<HargaRutin>) => void;
   deleteHargaRutin: (id: string) => void;
   calculateHargaPelaporan: () => HargaPelaporan[];
+  getKelasForTU: (tuId: string) => Record<string, KelasKomoditas>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -89,13 +90,61 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateTempatUsaha = (id: string, t: Partial<TempatUsaha>) => persist('tempatUsaha', setTempatUsaha, prev => prev.map(x => x.id === id ? { ...x, ...t } : x));
   const deleteTempatUsaha = (id: string) => persist('tempatUsaha', setTempatUsaha, prev => prev.filter(x => x.id !== id));
 
-  const addKomoditasDijual = (k: Omit<KomoditasDijual, 'id'>) => persist('komoditasDijual', setKomoditasDijual, prev => [...prev, { ...k, id: uid() }]);
-  const updateKomoditasDijual = (id: string, k: Partial<KomoditasDijual>) => persist('komoditasDijual', setKomoditasDijual, prev => prev.map(x => x.id === id ? { ...x, ...k } : x));
+  const addKomoditasDijual = (k: Omit<KomoditasDijual, 'id'>) => {
+    const newItem = { ...k, id: uid() };
+    // Auto-calculate standardized_stock_periode
+    newItem.standardized_stock_periode = k.nilai_stok > 0 && k.nilai_periode > 0 ? k.nilai_stok / k.nilai_periode : 0;
+    persist('komoditasDijual', setKomoditasDijual, prev => [...prev, newItem]);
+  };
+  const updateKomoditasDijual = (id: string, k: Partial<KomoditasDijual>) => {
+    persist('komoditasDijual', setKomoditasDijual, prev => prev.map(x => {
+      if (x.id !== id) return x;
+      const updated = { ...x, ...k };
+      updated.standardized_stock_periode = updated.nilai_stok > 0 && updated.nilai_periode > 0 ? updated.nilai_stok / updated.nilai_periode : 0;
+      return updated;
+    }));
+  };
   const deleteKomoditasDijual = (id: string) => persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
 
   const addHargaRutin = (h: Omit<HargaRutin, 'id'>) => persist('hargaRutin', setHargaRutin, prev => [...prev, { ...h, id: uid() }]);
   const updateHargaRutin = (id: string, h: Partial<HargaRutin>) => persist('hargaRutin', setHargaRutin, prev => prev.map(x => x.id === id ? { ...x, ...h } : x));
   const deleteHargaRutin = (id: string) => persist('hargaRutin', setHargaRutin, prev => prev.filter(x => x.id !== id));
+
+  // Auto-classify tempat usaha into kelas per komoditas
+  // Based on avg of harga_normal and harga_mahal for each TU selling a given komoditas in a given pasar
+  const getKelasForTU = useCallback((tuId: string): Record<string, KelasKomoditas> => {
+    const tu = tempatUsaha.find(t => t.id === tuId);
+    if (!tu) return {};
+    const result: Record<string, KelasKomoditas> = {};
+    const tuKDs = komoditasDijual.filter(kd => kd.tempat_usaha_id === tuId);
+
+    tuKDs.forEach(kd => {
+      // Get all TU in same pasar selling the same komoditas
+      const allKDsForKomInPasar = komoditasDijual.filter(otherKd => {
+        if (otherKd.komoditas_id !== kd.komoditas_id) return false;
+        const otherTU = tempatUsaha.find(t => t.id === otherKd.tempat_usaha_id);
+        return otherTU && otherTU.pasar_id === tu.pasar_id;
+      });
+
+      if (allKDsForKomInPasar.length === 0) return;
+
+      // Calculate average price for each TU
+      const tuAvgs = allKDsForKomInPasar.map(item => ({
+        tuId: item.tempat_usaha_id,
+        avg: (item.harga_normal + item.harga_mahal) / 2
+      })).sort((a, b) => b.avg - a.avg); // descending
+
+      const total = tuAvgs.length;
+      const third = Math.ceil(total / 3);
+      const idx = tuAvgs.findIndex(x => x.tuId === tuId);
+
+      if (idx < third) result[kd.komoditas_id] = 'besar';
+      else if (idx < third * 2) result[kd.komoditas_id] = 'menengah';
+      else result[kd.komoditas_id] = 'kecil';
+    });
+
+    return result;
+  }, [tempatUsaha, komoditasDijual]);
 
   const calculateHargaPelaporan = useCallback((): HargaPelaporan[] => {
     const finalized = hargaRutin.filter(h => h.status === 'finalisasi');
@@ -135,6 +184,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       addTempatUsaha, updateTempatUsaha, deleteTempatUsaha,
       addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual,
       addHargaRutin, updateHargaRutin, deleteHargaRutin, calculateHargaPelaporan,
+      getKelasForTU,
     }}>
       {children}
     </DataContext.Provider>

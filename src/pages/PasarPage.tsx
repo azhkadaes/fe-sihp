@@ -144,18 +144,18 @@ export default function PasarPage() {
         </div>
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+      {/* Search & Filter - compact */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Cari pasar..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full sm:w-36 h-9">
-            <SelectValue placeholder="Semua Status" />
+          <SelectTrigger className="w-28 sm:w-36 h-9">
+            <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             <SelectItem value="active">Aktif</SelectItem>
             <SelectItem value="inactive">Nonaktif</SelectItem>
           </SelectContent>
@@ -176,7 +176,7 @@ export default function PasarPage() {
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                       <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{p.alamat || '-'}</span>
                     </p>
-                    <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-green-500/15 text-green-600' : 'bg-muted text-muted-foreground'}`}>
+                    <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                       {p.is_active ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </div>
@@ -219,7 +219,7 @@ export default function PasarPage() {
                   <TableCell className="text-sm">{p.alamat || '-'}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.longitude}, {p.latitude}</TableCell>
                   <TableCell>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-green-500/15 text-green-600' : 'bg-muted text-muted-foreground'}`}>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                       {p.is_active ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </TableCell>

@@ -1,14 +1,13 @@
 import { useData } from '@/contexts/DataContext';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Download, Search } from 'lucide-react';
+import { Download, Search, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { exportToCSV } from '@/lib/csv-utils';
 
@@ -55,22 +54,120 @@ export default function HargaPelaporanPage() {
     toast.success('Data diekspor');
   };
 
+  const handleExportPDF = () => {
+    // Build PDF report content
+    const reportData = filtered.map(h => ({
+      tanggal: h.tanggal,
+      komoditas: komoditas.find(k => k.id === h.komoditas_id)?.nama || '',
+      pasar: pasar.find(p => p.id === h.pasar_id)?.nama || '',
+      harga_besar: h.harga_besar,
+      harga_menengah: h.harga_menengah,
+      harga_kecil: h.harga_kecil,
+      harga_rata_rata: h.harga_rata_rata,
+    }));
+
+    // Generate printable HTML
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    
+    const html = `
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Laporan Harga Pelaporan</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  body { font-family: 'Times New Roman', serif; font-size: 12pt; color: #000; }
+  .header { text-align: center; margin-bottom: 24px; border-bottom: 3px double #000; padding-bottom: 16px; }
+  .header h1 { font-size: 16pt; margin: 0 0 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .header h2 { font-size: 13pt; margin: 0 0 8px; font-weight: normal; }
+  .header p { font-size: 10pt; margin: 2px 0; color: #333; }
+  .meta { display: flex; justify-content: space-between; margin-bottom: 16px; font-size: 10pt; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 10pt; }
+  th, td { border: 1px solid #333; padding: 6px 8px; }
+  th { background: #f0f0f0; font-weight: bold; text-align: center; }
+  td.num { text-align: right; }
+  .footer { margin-top: 40px; text-align: right; font-size: 10pt; }
+  .footer .sign { margin-top: 60px; }
+  .summary { margin: 16px 0; font-size: 10pt; }
+</style>
+</head><body>
+<div class="header">
+  <h1>Laporan Harga Pelaporan Komoditas</h1>
+  <h2>Sistem Informasi Harga Pangan</h2>
+  <p>Tanggal Cetak: ${dateStr}</p>
+</div>
+<div class="summary">
+  <p><strong>Jumlah Data:</strong> ${reportData.length} entri</p>
+  <p><strong>Filter Pasar:</strong> ${filterPasar === 'all' ? 'Semua Pasar' : pasar.find(p => p.id === filterPasar)?.nama || '-'}</p>
+</div>
+<table>
+  <thead>
+    <tr>
+      <th>No</th>
+      <th>Tanggal</th>
+      <th>Komoditas</th>
+      <th>Pasar</th>
+      <th>Harga Besar</th>
+      <th>Harga Menengah</th>
+      <th>Harga Kecil</th>
+      <th>Rata-rata</th>
+    </tr>
+  </thead>
+  <tbody>
+    ${reportData.map((r, i) => `
+    <tr>
+      <td style="text-align:center">${i + 1}</td>
+      <td>${r.tanggal}</td>
+      <td>${r.komoditas}</td>
+      <td>${r.pasar}</td>
+      <td class="num">${r.harga_besar != null ? 'Rp ' + r.harga_besar.toLocaleString('id-ID') : '-'}</td>
+      <td class="num">${r.harga_menengah != null ? 'Rp ' + r.harga_menengah.toLocaleString('id-ID') : '-'}</td>
+      <td class="num">${r.harga_kecil != null ? 'Rp ' + r.harga_kecil.toLocaleString('id-ID') : '-'}</td>
+      <td class="num"><strong>Rp ${r.harga_rata_rata.toLocaleString('id-ID')}</strong></td>
+    </tr>`).join('')}
+  </tbody>
+</table>
+<div class="footer">
+  <p>${dateStr}</p>
+  <p>Petugas Pelaporan,</p>
+  <div class="sign">
+    <p>( ............................ )</p>
+    <p>NIP. ........................</p>
+  </div>
+</div>
+</body></html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.print();
+    }
+    toast.success('Laporan PDF dibuka');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Harga Pelaporan</h1>
-        <Button variant="outline" size="sm" onClick={handleExport}>
-          <Download className="h-4 w-4 mr-1" /> Ekspor
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download className="h-4 w-4 mr-1" /> CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleExportPDF}>
+            <FileText className="h-4 w-4 mr-1" /> Laporan
+          </Button>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Cari..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
         </div>
         <Select value={filterPasar} onValueChange={setFilterPasar}>
-          <SelectTrigger className="w-full sm:w-40 h-9"><SelectValue placeholder="Semua Pasar" /></SelectTrigger>
+          <SelectTrigger className="w-32 sm:w-40 h-9"><SelectValue placeholder="Pasar" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Pasar</SelectItem>
             {pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}

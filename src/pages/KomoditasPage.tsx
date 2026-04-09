@@ -95,7 +95,6 @@ export default function KomoditasPage() {
 
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Komoditas</h1>
         <div className="flex items-center gap-2">
@@ -161,30 +160,23 @@ export default function KomoditasPage() {
         </div>
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+      {/* Search & Filter - compact */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Cari komoditas..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
         </div>
         <Select value={filterSatuan} onValueChange={setFilterSatuan}>
-          <SelectTrigger className="w-full sm:w-40 h-9">
-            <SelectValue placeholder="Semua Satuan" />
+          <SelectTrigger className="w-32 sm:w-40 h-9">
+            <SelectValue placeholder="Satuan" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Satuan</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             {SATUAN_DASAR_OPTIONS.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" className="h-9 sm:hidden" onClick={handleExport}>
           <Download className="h-4 w-4 mr-1" /> Ekspor
-        </Button>
-      </div>
-
-      {/* Sort controls (mobile) */}
-      <div className="flex gap-2 sm:hidden">
-        <Button variant="ghost" size="sm" onClick={() => toggleSort('nama')} className="text-xs">
-          <ArrowUpDown className="h-3 w-3 mr-1" /> Nama {sortField === 'nama' && (sortDir === 'asc' ? '↑' : '↓')}
         </Button>
       </div>
 

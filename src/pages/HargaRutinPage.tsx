@@ -30,12 +30,9 @@ export default function HargaRutinPage() {
   const [filterPasar, setFilterPasar] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Step 1
   const [namaEnumerator, setNamaEnumerator] = useState('');
   const [tanggal, setTanggal] = useState<Date | undefined>(undefined);
   const [pasarId, setPasarId] = useState('');
-
-  // Step 2
   const [komoditasId, setKomoditasId] = useState('');
   const [kelasKomoditas, setKelasKomoditas] = useState<KelasKomoditas | ''>('');
   const [tempatUsahaId, setTempatUsahaId] = useState('');
@@ -250,12 +247,12 @@ export default function HargaRutinPage() {
                     <CardContent className="p-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          <Badge variant={entry.status === 'finalisasi' ? 'default' : 'secondary'} className={cn('text-xs', entry.status === 'finalisasi' && 'bg-green-500/15 text-green-600 border-green-500/20')}>
+                          <Badge variant={entry.status === 'finalisasi' ? 'default' : 'secondary'} className={cn('text-xs', entry.status === 'finalisasi' && 'bg-success/15 text-success border-success/20')}>
                             {entry.kelas_komoditas}
                           </Badge>
                           <p className="text-sm mt-1 font-medium">Rp {entry.harga.toLocaleString('id-ID')}</p>
                         </div>
-                        <Badge variant={entry.status === 'finalisasi' ? 'default' : 'outline'} className={cn('text-xs', entry.status === 'finalisasi' && 'bg-green-500/15 text-green-600')}>
+                        <Badge variant={entry.status === 'finalisasi' ? 'default' : 'outline'} className={cn('text-xs', entry.status === 'finalisasi' && 'bg-success/15 text-success')}>
                           {entry.status === 'finalisasi' ? 'Final' : 'Proses'}
                         </Badge>
                       </div>
@@ -305,23 +302,23 @@ export default function HargaRutinPage() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Cari..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-full sm:w-40 h-9"><SelectValue placeholder="Semua Status" /></SelectTrigger>
+          <SelectTrigger className="w-28 sm:w-40 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="dalam_proses">Dalam Proses</SelectItem>
-            <SelectItem value="finalisasi">Finalisasi</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
+            <SelectItem value="dalam_proses">Proses</SelectItem>
+            <SelectItem value="finalisasi">Final</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterPasar} onValueChange={setFilterPasar}>
-          <SelectTrigger className="w-full sm:w-40 h-9"><SelectValue placeholder="Semua Pasar" /></SelectTrigger>
+          <SelectTrigger className="w-28 sm:w-40 h-9"><SelectValue placeholder="Pasar" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Pasar</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             {pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -336,13 +333,13 @@ export default function HargaRutinPage() {
           const pas = pasar.find(p => p.id === h.pasar_id);
           const isFinal = h.status === 'finalisasi';
           return (
-            <Card key={h.id} className={cn('transition-colors', isFinal && 'border-green-500/20')}>
+            <Card key={h.id} className={cn('transition-colors', isFinal && 'border-success/20')}>
               <CardContent className="p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-sm">{kom?.nama || '-'}</h3>
-                      <Badge variant={isFinal ? 'default' : 'outline'} className={cn('text-xs', isFinal ? 'bg-green-500/15 text-green-600 border-green-500/20' : '')}>
+                      <Badge variant={isFinal ? 'default' : 'outline'} className={cn('text-xs', isFinal ? 'bg-success/15 text-success border-success/20' : '')}>
                         {isFinal ? <><CheckCircle className="h-3 w-3 mr-0.5" />Final</> : <><Clock className="h-3 w-3 mr-0.5" />Proses</>}
                       </Badge>
                     </div>
