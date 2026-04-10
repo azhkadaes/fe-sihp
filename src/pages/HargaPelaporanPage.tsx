@@ -1,3 +1,11 @@
+/**
+ * HargaPelaporanPage — Halaman Harga Pelaporan (read-only).
+ * Menampilkan data agregasi harga yang dihitung otomatis dari
+ * harga rutin yang sudah difinalisasi.
+ *
+ * Harga pelaporan = rata-rata dari harga 3 kelas (besar, menengah, kecil)
+ * untuk setiap kombinasi tanggal + pasar + komoditas.
+ */
 import { useData } from '@/contexts/DataContext';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useState } from 'react';
 import { Download, Search, FileText } from 'lucide-react';
@@ -14,14 +23,18 @@ import { exportToCSV } from '@/lib/csv-utils';
 export default function HargaPelaporanPage() {
   const { hargaPelaporan, komoditas, pasar } = useData();
   const isMobile = useIsMobile();
+
+  /* ===== State ===== */
   const [detailId, setDetailId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterPasar, setFilterPasar] = useState<string>('all');
 
+  /* ===== Detail lookup ===== */
   const detail = hargaPelaporan.find(h => h.id === detailId);
   const detailKom = detail ? komoditas.find(k => k.id === detail.komoditas_id) : null;
   const detailPas = detail ? pasar.find(p => p.id === detail.pasar_id) : null;
 
+  /* ===== Filter & Sort ===== */
   const filtered = hargaPelaporan
     .filter(h => {
       const kom = komoditas.find(k => k.id === h.komoditas_id);
@@ -32,6 +45,7 @@ export default function HargaPelaporanPage() {
     .filter(h => filterPasar === 'all' || h.pasar_id === filterPasar)
     .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
 
+  /* ===== Ekspor CSV ===== */
   const handleExport = () => {
     const data = hargaPelaporan.map(h => ({
       tanggal: h.tanggal,
@@ -54,8 +68,8 @@ export default function HargaPelaporanPage() {
     toast.success('Data diekspor');
   };
 
+  /* ===== Ekspor PDF Laporan Formal ===== */
   const handleExportPDF = () => {
-    // Build PDF report content
     const reportData = filtered.map(h => ({
       tanggal: h.tanggal,
       komoditas: komoditas.find(k => k.id === h.komoditas_id)?.nama || '',
@@ -66,10 +80,10 @@ export default function HargaPelaporanPage() {
       harga_rata_rata: h.harga_rata_rata,
     }));
 
-    // Generate printable HTML
     const now = new Date();
     const dateStr = now.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
     
+    // Template HTML laporan pemerintahan formal
     const html = `
 <!DOCTYPE html>
 <html><head>
@@ -104,14 +118,8 @@ export default function HargaPelaporanPage() {
 <table>
   <thead>
     <tr>
-      <th>No</th>
-      <th>Tanggal</th>
-      <th>Komoditas</th>
-      <th>Pasar</th>
-      <th>Harga Besar</th>
-      <th>Harga Menengah</th>
-      <th>Harga Kecil</th>
-      <th>Rata-rata</th>
+      <th>No</th><th>Tanggal</th><th>Komoditas</th><th>Pasar</th>
+      <th>Harga Besar</th><th>Harga Menengah</th><th>Harga Kecil</th><th>Rata-rata</th>
     </tr>
   </thead>
   <tbody>
@@ -147,8 +155,10 @@ export default function HargaPelaporanPage() {
     toast.success('Laporan PDF dibuka');
   };
 
+  /* ===== Render ===== */
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Harga Pelaporan</h1>
         <div className="flex items-center gap-2">
@@ -161,6 +171,7 @@ export default function HargaPelaporanPage() {
         </div>
       </div>
 
+      {/* Filter */}
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -175,6 +186,7 @@ export default function HargaPelaporanPage() {
         </Select>
       </div>
 
+      {/* State kosong */}
       {filtered.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground text-sm">
@@ -183,7 +195,9 @@ export default function HargaPelaporanPage() {
         </Card>
       )}
 
+      {/* ===== Tampilan Data ===== */}
       {isMobile ? (
+        /* --- Tampilan kartu untuk mobile --- */
         <div className="space-y-2">
           {filtered.map(h => {
             const kom = komoditas.find(k => k.id === h.komoditas_id);
@@ -207,6 +221,7 @@ export default function HargaPelaporanPage() {
           })}
         </div>
       ) : (
+        /* --- Tampilan tabel untuk desktop --- */
         <Card>
           <Table>
             <TableHeader>
@@ -229,9 +244,10 @@ export default function HargaPelaporanPage() {
                     <TableCell className="text-sm">{h.tanggal}</TableCell>
                     <TableCell className="font-medium text-sm">{kom?.nama || '-'}</TableCell>
                     <TableCell className="text-sm">{pas?.nama || '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{h.harga_besar != null ? `Rp ${h.harga_besar.toLocaleString('id-ID')}` : '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{h.harga_menengah != null ? `Rp ${h.harga_menengah.toLocaleString('id-ID')}` : '-'}</TableCell>
-                    <TableCell className="text-right text-sm">{h.harga_kecil != null ? `Rp ${h.harga_kecil.toLocaleString('id-ID')}` : '-'}</TableCell>
+                    {/* Harga per kelas — warna sesuai design system */}
+                    <TableCell className="text-right text-sm text-kelas-besar">{h.harga_besar != null ? `Rp ${h.harga_besar.toLocaleString('id-ID')}` : '-'}</TableCell>
+                    <TableCell className="text-right text-sm text-kelas-menengah">{h.harga_menengah != null ? `Rp ${h.harga_menengah.toLocaleString('id-ID')}` : '-'}</TableCell>
+                    <TableCell className="text-right text-sm text-kelas-kecil">{h.harga_kecil != null ? `Rp ${h.harga_kecil.toLocaleString('id-ID')}` : '-'}</TableCell>
                     <TableCell className="text-right font-bold text-accent text-sm">Rp {h.harga_rata_rata.toLocaleString('id-ID')}</TableCell>
                   </TableRow>
                 );
@@ -241,6 +257,7 @@ export default function HargaPelaporanPage() {
         </Card>
       )}
 
+      {/* ===== Dialog Detail ===== */}
       <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>
         <DialogContent>
           <DialogHeader><DialogTitle>Detail Harga Pelaporan</DialogTitle></DialogHeader>
@@ -251,17 +268,18 @@ export default function HargaPelaporanPage() {
                 <span className="text-muted-foreground">Pasar</span><span className="font-medium">{detailPas?.nama}</span>
                 <span className="text-muted-foreground">Tanggal</span><span className="font-medium">{detail.tanggal}</span>
               </div>
+              {/* Breakdown harga per kelas — warna konsisten */}
               <div className="space-y-2">
-                <div className="flex justify-between p-3 rounded-lg bg-muted/50">
-                  <span className="text-sm">Kelas Besar</span>
+                <div className="flex justify-between p-3 rounded-lg bg-kelas-besar/10 border border-kelas-besar/20">
+                  <span className="text-sm text-kelas-besar font-medium">Kelas Besar</span>
                   <span className="font-medium text-sm">{detail.harga_besar != null ? `Rp ${detail.harga_besar.toLocaleString('id-ID')}` : '-'}</span>
                 </div>
-                <div className="flex justify-between p-3 rounded-lg bg-muted/50">
-                  <span className="text-sm">Kelas Menengah</span>
+                <div className="flex justify-between p-3 rounded-lg bg-kelas-menengah/10 border border-kelas-menengah/20">
+                  <span className="text-sm text-kelas-menengah font-medium">Kelas Menengah</span>
                   <span className="font-medium text-sm">{detail.harga_menengah != null ? `Rp ${detail.harga_menengah.toLocaleString('id-ID')}` : '-'}</span>
                 </div>
-                <div className="flex justify-between p-3 rounded-lg bg-muted/50">
-                  <span className="text-sm">Kelas Kecil</span>
+                <div className="flex justify-between p-3 rounded-lg bg-kelas-kecil/10 border border-kelas-kecil/20">
+                  <span className="text-sm text-kelas-kecil font-medium">Kelas Kecil</span>
                   <span className="font-medium text-sm">{detail.harga_kecil != null ? `Rp ${detail.harga_kecil.toLocaleString('id-ID')}` : '-'}</span>
                 </div>
                 <div className="flex justify-between p-3 rounded-lg bg-accent/10 border border-accent/20">
@@ -273,6 +291,27 @@ export default function HargaPelaporanPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Legenda kelas */}
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex flex-wrap gap-3 text-xs">
+            <span className="text-muted-foreground font-medium">Kelas:</span>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-kelas-besar" />
+              <span>Besar — pedagang besar, harga tinggi</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-kelas-menengah" />
+              <span>Menengah — pedagang menengah</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-full bg-kelas-kecil" />
+              <span>Kecil — pedagang kecil, harga rendah</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

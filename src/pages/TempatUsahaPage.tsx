@@ -1,3 +1,13 @@
+/**
+ * TempatUsahaPage — Halaman CRUD Tempat Usaha.
+ * Menampilkan daftar toko/pedagang beserta komoditas yang dijual.
+ * Mendukung sub-CRUD komoditas dijual dengan klasifikasi kelas otomatis.
+ *
+ * Warna kelas komoditas (konsisten di seluruh aplikasi):
+ * - Besar: Gold (kelas-besar) — pedagang besar dengan harga tinggi
+ * - Menengah: Biru (kelas-menengah) — pedagang menengah
+ * - Kecil: Abu (kelas-kecil) — pedagang kecil dengan harga rendah
+ */
 import { useState, useRef } from 'react';
 import { useData } from '@/contexts/DataContext';
 import type { TempatUsaha, KomoditasDijual } from '@/types';
@@ -14,24 +24,41 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Plus, Pencil, Trash2, Search, ChevronRight, ArrowLeft, Download, Upload, ArrowUpDown, CalendarIcon, Info } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, ChevronRight, ArrowLeft, Download, Upload, ArrowUpDown, CalendarIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { exportToCSV, parseCSV } from '@/lib/csv-utils';
 
+/** Form default untuk tempat usaha baru */
 const emptyTU: Omit<TempatUsaha, 'id'> = { nama: '', nama_pemilik: '', nama_narahubung: '', nomor_narahubung: '', berjualan_sejak: '', is_active: 1, pasar_id: '' };
 
+/** Form default untuk komoditas dijual baru */
 const emptyKD: Omit<KomoditasDijual, 'id'> = {
   tempat_usaha_id: '', komoditas_id: '', harga_normal: 0, harga_mahal: 0,
   satuan_stok: 'kg', nilai_stok: 0, nilai_periode: 0, lokasi_supplier: '',
   pola_distribusi: 0, standardized_stock_periode: 0, is_active: true,
 };
 
+/**
+ * Helper: mendapatkan style warna untuk badge kelas komoditas.
+ * Menggunakan token dari design system (--kelas-besar, --kelas-menengah, --kelas-kecil).
+ */
+const getKelasStyle = (kelas: string) => {
+  switch (kelas) {
+    case 'besar': return 'border-kelas-besar text-kelas-besar bg-kelas-besar/10';
+    case 'menengah': return 'border-kelas-menengah text-kelas-menengah bg-kelas-menengah/10';
+    case 'kecil': return 'border-kelas-kecil text-kelas-kecil bg-kelas-kecil/10';
+    default: return '';
+  }
+};
+
 export default function TempatUsahaPage() {
   const { tempatUsaha, addTempatUsaha, updateTempatUsaha, deleteTempatUsaha, pasar, komoditas, komoditasDijual, addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual, getKelasForTU } = useData();
   const isMobile = useIsMobile();
+
+  /* ===== State utama ===== */
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TempatUsaha | null>(null);
@@ -48,6 +75,7 @@ export default function TempatUsahaPage() {
   const [berjualanDate, setBerjualanDate] = useState<Date | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* ===== Filter & Sort ===== */
   const filtered = tempatUsaha
     .filter(t => t.nama.toLowerCase().includes(search.toLowerCase()) || t.nama_pemilik.toLowerCase().includes(search.toLowerCase()))
     .filter(t => filterPasar === 'all' || t.pasar_id === filterPasar)
@@ -62,6 +90,7 @@ export default function TempatUsahaPage() {
     else { setSortField(field); setSortDir('asc'); }
   };
 
+  /* ===== Handler form Tempat Usaha ===== */
   const openAdd = () => {
     setEditing(null);
     setForm(emptyTU);
@@ -69,6 +98,7 @@ export default function TempatUsahaPage() {
     setBerjualanDate(undefined);
     setDialogOpen(true);
   };
+
   const openEdit = (t: TempatUsaha) => {
     setEditing(t);
     setForm({ nama: t.nama, nama_pemilik: t.nama_pemilik, nama_narahubung: t.nama_narahubung, nomor_narahubung: t.nomor_narahubung, berjualan_sejak: t.berjualan_sejak, is_active: t.is_active, pasar_id: t.pasar_id });
@@ -80,6 +110,7 @@ export default function TempatUsahaPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nama.trim()) { toast.error('Nama wajib diisi'); return; }
+    // Jika checkbox "sama dengan pemilik" aktif, salin nama_pemilik ke nama_narahubung
     const narahubung = sameAsOwner ? form.nama_pemilik : form.nama_narahubung;
     const data = { ...form, nama_narahubung: narahubung, berjualan_sejak: berjualanDate ? format(berjualanDate, 'yyyy-MM-dd') : form.berjualan_sejak };
     if (editing) { updateTempatUsaha(editing.id, data); toast.success('Diperbarui'); }
@@ -87,6 +118,7 @@ export default function TempatUsahaPage() {
     setDialogOpen(false);
   };
 
+  /* ===== Ekspor & Impor CSV ===== */
   const handleExport = () => {
     const data = tempatUsaha.map(t => ({
       ...t,
@@ -130,6 +162,7 @@ export default function TempatUsahaPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  /* ===== Sub-CRUD Komoditas Dijual ===== */
   const kdForTU = selectedTU ? komoditasDijual.filter(kd => kd.tempat_usaha_id === selectedTU.id) : [];
 
   const openAddKD = () => {
@@ -145,23 +178,26 @@ export default function TempatUsahaPage() {
     setKdDialogOpen(false);
   };
 
-  // Detail view
+  /* ===== Detail View — Komoditas Dijual ===== */
   if (selectedTU) {
     const tuKelas = getKelasForTU(selectedTU.id);
     return (
       <div className="space-y-4">
+        {/* Header detail */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedTU(null)}><ArrowLeft className="h-4 w-4" /></Button>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-bold">{selectedTU.nama}</h1>
-            <p className="text-xs text-muted-foreground">Komoditas yang dijual</p>
+            <p className="text-xs text-muted-foreground">Komoditas yang dijual • {pasar.find(p => p.id === selectedTU.pasar_id)?.nama || '-'}</p>
           </div>
         </div>
 
+        {/* Tombol tambah komoditas */}
         <Button onClick={openAddKD} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
           <Plus className="h-4 w-4 mr-1" /> Tambah Komoditas
         </Button>
 
+        {/* Dialog form komoditas dijual */}
         <Dialog open={kdDialogOpen} onOpenChange={setKdDialogOpen}>
           <DialogContent className="max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>{editingKD ? 'Edit' : 'Tambah'} Komoditas Dijual</DialogTitle></DialogHeader>
@@ -206,6 +242,15 @@ export default function TempatUsahaPage() {
           </DialogContent>
         </Dialog>
 
+        {/* Legenda kelas komoditas */}
+        <div className="flex flex-wrap gap-2 text-xs">
+          <span className="text-muted-foreground">Kelas:</span>
+          <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('besar')}`}>Besar</Badge>
+          <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('menengah')}`}>Menengah</Badge>
+          <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('kecil')}`}>Kecil</Badge>
+        </div>
+
+        {/* Daftar komoditas dijual */}
         <div className="space-y-2">
           {kdForTU.map(kd => {
             const kom = komoditas.find(k => k.id === kd.komoditas_id);
@@ -218,12 +263,9 @@ export default function TempatUsahaPage() {
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-sm">{kom?.nama || '-'}</h3>
+                        {/* Badge kelas — warna sesuai design system */}
                         {kelas && (
-                          <Badge variant="outline" className={cn('text-xs capitalize',
-                            kelas === 'besar' ? 'border-accent text-accent' :
-                            kelas === 'menengah' ? 'border-blue-500 text-blue-500' :
-                            'border-muted-foreground text-muted-foreground'
-                          )}>
+                          <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(kelas))}>
                             {kelas}
                           </Badge>
                         )}
@@ -232,10 +274,12 @@ export default function TempatUsahaPage() {
                         Normal: Rp {kd.harga_normal.toLocaleString('id-ID')} • Mahal: Rp {kd.harga_mahal.toLocaleString('id-ID')}
                       </p>
                       <p className="text-xs text-muted-foreground">Rata-rata: Rp {avgHarga.toLocaleString('id-ID')}</p>
+                      {/* Status aktif/nonaktif */}
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${kd.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                         {kd.is_active ? 'Aktif' : 'Nonaktif'}
                       </span>
                     </div>
+                    {/* Aksi edit & hapus */}
                     <div className="flex gap-0.5">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingKD(kd); setKdForm({ ...kd }); setKdDialogOpen(true); }}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -259,9 +303,10 @@ export default function TempatUsahaPage() {
     );
   }
 
-  // List view
+  /* ===== List View — Daftar Tempat Usaha ===== */
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Tempat Usaha</h1>
         <div className="flex items-center gap-2">
@@ -272,6 +317,7 @@ export default function TempatUsahaPage() {
             <Upload className="h-4 w-4 mr-1" /> Impor
           </Button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
+          {/* Dialog tambah/edit tempat usaha */}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openAdd} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
@@ -289,6 +335,7 @@ export default function TempatUsahaPage() {
                     <SelectContent>{pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
+                {/* Nama Pemilik */}
                 <div className="space-y-2">
                   <Label>Nama Pemilik</Label>
                   <Input value={form.nama_pemilik} onChange={e => {
@@ -296,6 +343,7 @@ export default function TempatUsahaPage() {
                     setForm(prev => ({ ...prev, nama_pemilik: val, ...(sameAsOwner ? { nama_narahubung: val } : {}) }));
                   }} />
                 </div>
+                {/* Checkbox: narahubung sama dengan pemilik */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Checkbox id="same-owner" checked={sameAsOwner} onCheckedChange={(v) => {
@@ -307,6 +355,7 @@ export default function TempatUsahaPage() {
                       Narahubung sama dengan pemilik
                     </label>
                   </div>
+                  {/* Input narahubung terpisah — muncul hanya jika nama berbeda */}
                   {!sameAsOwner && (
                     <div className="space-y-2">
                       <Label>Nama Narahubung</Label>
@@ -315,6 +364,7 @@ export default function TempatUsahaPage() {
                   )}
                 </div>
                 <div className="space-y-2"><Label>Nomor Narahubung</Label><Input value={form.nomor_narahubung} onChange={e => setForm({ ...form, nomor_narahubung: e.target.value })} /></div>
+                {/* Calendar picker untuk tanggal berjualan */}
                 <div className="space-y-2">
                   <Label>Berjualan Sejak</Label>
                   <Popover>
@@ -333,28 +383,30 @@ export default function TempatUsahaPage() {
                   <Switch checked={form.is_active === 1} onCheckedChange={c => setForm({ ...form, is_active: c ? 1 : 0 })} />
                   <Label>Aktif</Label>
                 </div>
-                <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">{editing ? 'Perbarui' : 'Simpan'}</Button>
+                <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+                  {editing ? 'Perbarui' : 'Simpan'}
+                </Button>
               </form>
             </DialogContent>
           </Dialog>
         </div>
       </div>
 
-      {/* Search & Filter - compact on mobile */}
+      {/* Pencarian & Filter */}
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Cari tempat usaha..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
         </div>
         <Select value={filterPasar} onValueChange={setFilterPasar}>
-          <SelectTrigger className="w-32 sm:w-40 h-9"><SelectValue placeholder="Pasar" /></SelectTrigger>
+          <SelectTrigger className="w-28 sm:w-36 h-9"><SelectValue placeholder="Pasar" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Pasar</SelectItem>
+            <SelectItem value="all">Semua</SelectItem>
             {pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-28 sm:w-36 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-28 sm:w-32 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua</SelectItem>
             <SelectItem value="active">Aktif</SelectItem>
@@ -363,26 +415,40 @@ export default function TempatUsahaPage() {
         </Select>
       </div>
 
+      {/* Daftar tempat usaha */}
       <div className="space-y-2">
         {filtered.map(t => {
-          const pasarName = pasar.find(p => p.id === t.pasar_id)?.nama || '-';
+          const pas = pasar.find(p => p.id === t.pasar_id);
+          const kdCount = komoditasDijual.filter(kd => kd.tempat_usaha_id === t.id).length;
           return (
             <Card key={t.id} className="cursor-pointer hover:border-accent/40 transition-colors" onClick={() => setSelectedTU(t)}>
               <CardContent className="p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-sm">{t.nama}</h3>
-                    <p className="text-xs text-muted-foreground mt-0.5">{t.nama_pemilik || '-'} • {pasarName}</p>
-                    <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${t.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
-                      {t.is_active ? 'Aktif' : 'Nonaktif'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-semibold text-sm truncate">{t.nama}</h3>
+                      {/* Badge status */}
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${t.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
+                        {t.is_active ? 'Aktif' : 'Nonaktif'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {pas?.nama || '-'} • Pemilik: {t.nama_pemilik || '-'} • {kdCount} komoditas
+                    </p>
                   </div>
-                  <div className="flex items-center gap-0.5 shrink-0">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => { e.stopPropagation(); openEdit(t); }}><Pencil className="h-3.5 w-3.5" /></Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {/* Tombol edit — stop propagation agar tidak masuk detail */}
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => { e.stopPropagation(); openEdit(t); }}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
                     <AlertDialog>
-                      <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => e.stopPropagation()}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
+                      <AlertDialogTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => e.stopPropagation()}>
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
                       <AlertDialogContent>
-                        <AlertDialogHeader><AlertDialogTitle>Hapus?</AlertDialogTitle><AlertDialogDescription>Data akan dihapus.</AlertDialogDescription></AlertDialogHeader>
+                        <AlertDialogHeader><AlertDialogTitle>Hapus?</AlertDialogTitle><AlertDialogDescription>Data "{t.nama}" akan dihapus.</AlertDialogDescription></AlertDialogHeader>
                         <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => { deleteTempatUsaha(t.id); toast.success('Dihapus'); }}>Hapus</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>

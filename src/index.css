@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    /* ===== Warna Dasar ===== */
     --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
 
@@ -13,33 +14,60 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
 
+    /* ===== Warna Primer — Navy Gelap ===== */
     --primary: 222.2 47.4% 11.2%;
     --primary-foreground: 210 40% 98%;
 
+    /* ===== Warna Sekunder ===== */
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
 
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
 
+    /* ===== Warna Aksen — Gold #DBAF6C ===== */
     --accent: 36 61% 64%;
     --accent-foreground: 222.2 47.4% 11.2%;
 
+    /* ===== Warna Destruktif — Merah ===== */
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 36 61% 64%;
-
     --radius: 0.5rem;
 
+    /* ===== Gold Accent ===== */
     --gold: 36 61% 64%;
     --gold-foreground: 222.2 47.4% 11.2%;
 
+    /* ===== Indikator Status ===== */
+    /* Hijau — untuk sukses, aktif, harga turun (positif) */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
 
+    /* Merah — untuk bahaya, harga naik (negatif) */
+    --danger: 0 84% 60%;
+    --danger-foreground: 0 0% 100%;
+
+    /* Kuning/Amber — untuk warning, stabil, proses */
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    /* Biru — untuk info, kelas menengah */
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* ===== Kelas Komoditas ===== */
+    /* Besar — Gold accent */
+    --kelas-besar: 36 61% 64%;
+    /* Menengah — Biru */
+    --kelas-menengah: 217 91% 60%;
+    /* Kecil — Abu-abu */
+    --kelas-kecil: 215 16% 47%;
+
+    /* ===== Sidebar ===== */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5.3% 26.1%;
     --sidebar-primary: 240 5.9% 10%;
@@ -51,6 +79,7 @@
   }
 
   .dark {
+    /* ===== Warna Dasar — Dark Mode ===== */
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
 
@@ -82,9 +111,25 @@
     --gold: 36 61% 64%;
     --gold-foreground: 222.2 47.4% 11.2%;
 
-    --success: 142 76% 36%;
+    /* ===== Indikator Status — Dark Mode ===== */
+    --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
+    --danger: 0 72% 51%;
+    --danger-foreground: 0 0% 100%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    /* ===== Kelas Komoditas — Dark Mode ===== */
+    --kelas-besar: 36 61% 64%;
+    --kelas-menengah: 217 91% 60%;
+    --kelas-kecil: 215 20% 65%;
+
+    /* ===== Sidebar — Dark Mode ===== */
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 36 61% 64%;

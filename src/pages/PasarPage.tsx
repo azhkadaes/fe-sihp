@@ -1,3 +1,8 @@
+/**
+ * PasarPage — Halaman CRUD Pasar.
+ * Menampilkan daftar pasar dalam bentuk kartu (mobile) atau tabel (desktop).
+ * Mendukung pencarian, filter status, sorting, ekspor CSV, dan impor CSV.
+ */
 import { useState, useRef } from 'react';
 import { useData } from '@/contexts/DataContext';
 import type { Pasar } from '@/types';
@@ -18,11 +23,14 @@ import { exportToCSV, parseCSV } from '@/lib/csv-utils';
 type SortField = 'nama' | 'alamat';
 type SortDir = 'asc' | 'desc';
 
+/** Form default untuk pasar baru */
 const emptyPasar = { nama: '', longitude: 0, latitude: 0, alamat: '', is_active: 1 };
 
 export default function PasarPage() {
   const { pasar, addPasar, updatePasar, deletePasar } = useData();
   const isMobile = useIsMobile();
+
+  /* ===== State pencarian, filter, sorting ===== */
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Pasar | null>(null);
@@ -32,6 +40,7 @@ export default function PasarPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /* ===== Filter & Sort data ===== */
   const filtered = pasar
     .filter(p => p.nama.toLowerCase().includes(search.toLowerCase()) || p.alamat.toLowerCase().includes(search.toLowerCase()))
     .filter(p => filterStatus === 'all' || (filterStatus === 'active' ? p.is_active === 1 : p.is_active === 0))
@@ -40,11 +49,13 @@ export default function PasarPage() {
       return (a[sortField] || '').toString().localeCompare((b[sortField] || '').toString()) * mul;
     });
 
+  /** Toggle sorting — klik kolom yang sama untuk ubah arah */
   const toggleSort = (field: SortField) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
   };
 
+  /* ===== Handler form ===== */
   const openAdd = () => { setEditing(null); setForm(emptyPasar); setDialogOpen(true); };
   const openEdit = (p: Pasar) => { setEditing(p); setForm({ nama: p.nama, longitude: p.longitude, latitude: p.latitude, alamat: p.alamat, is_active: p.is_active }); setDialogOpen(true); };
 
@@ -56,6 +67,7 @@ export default function PasarPage() {
     setDialogOpen(false);
   };
 
+  /* ===== Ekspor & Impor CSV ===== */
   const handleExport = () => {
     exportToCSV(pasar, 'pasar', [
       { key: 'nama', label: 'Nama' },
@@ -92,11 +104,14 @@ export default function PasarPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  /* ===== Render ===== */
   return (
     <div className="space-y-4">
+      {/* ===== Header dengan aksi ===== */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Pasar</h1>
         <div className="flex items-center gap-2">
+          {/* Tombol ekspor/impor — hidden di mobile, muncul di bawah */}
           <Button variant="outline" size="sm" onClick={handleExport} className="hidden sm:flex">
             <Download className="h-4 w-4 mr-1" /> Ekspor
           </Button>
@@ -104,6 +119,7 @@ export default function PasarPage() {
             <Upload className="h-4 w-4 mr-1" /> Impor
           </Button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
+          {/* Dialog tambah/edit pasar */}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openAdd} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
@@ -144,7 +160,7 @@ export default function PasarPage() {
         </div>
       </div>
 
-      {/* Search & Filter - compact */}
+      {/* ===== Pencarian & Filter ===== */}
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -160,12 +176,15 @@ export default function PasarPage() {
             <SelectItem value="inactive">Nonaktif</SelectItem>
           </SelectContent>
         </Select>
+        {/* Tombol ekspor mobile */}
         <Button variant="outline" size="sm" className="h-9 sm:hidden" onClick={handleExport}>
           <Download className="h-4 w-4 mr-1" /> Ekspor
         </Button>
       </div>
 
+      {/* ===== Tampilan Data ===== */}
       {isMobile ? (
+        /* --- Tampilan kartu untuk mobile --- */
         <div className="space-y-2">
           {filtered.map(p => (
             <Card key={p.id}>
@@ -176,10 +195,12 @@ export default function PasarPage() {
                     <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                       <MapPin className="h-3 w-3 shrink-0" /> <span className="truncate">{p.alamat || '-'}</span>
                     </p>
+                    {/* Badge status — hijau untuk aktif, abu untuk nonaktif */}
                     <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                       {p.is_active ? 'Aktif' : 'Nonaktif'}
                     </span>
                   </div>
+                  {/* Aksi edit & hapus */}
                   <div className="flex gap-0.5 shrink-0">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(p)}><Pencil className="h-3.5 w-3.5" /></Button>
                     <AlertDialog>
@@ -197,6 +218,7 @@ export default function PasarPage() {
           {filtered.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">Tidak ada data pasar.</p>}
         </div>
       ) : (
+        /* --- Tampilan tabel untuk desktop --- */
         <Card>
           <Table>
             <TableHeader>
@@ -219,6 +241,7 @@ export default function PasarPage() {
                   <TableCell className="text-sm">{p.alamat || '-'}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{p.longitude}, {p.latitude}</TableCell>
                   <TableCell>
+                    {/* Status badge — konsisten dengan design system */}
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                       {p.is_active ? 'Aktif' : 'Nonaktif'}
                     </span>
