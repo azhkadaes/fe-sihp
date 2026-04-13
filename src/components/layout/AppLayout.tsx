@@ -171,16 +171,8 @@ export default function AppLayout() {
           ))}
         </nav>
 
-        {/* Footer */}
+        {/* Footer: Theme toggle + Logout */}
         <div className="border-t p-2 space-y-1">
-          <div
-            className={cn(
-              "flex items-center",
-              collapsed ? "justify-center" : "px-2",
-            )}
-          >
-            <ThemeToggle />
-          </div>
           <button
             onClick={logout}
             title={collapsed ? "Keluar" : undefined}
@@ -196,9 +188,15 @@ export default function AppLayout() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 p-6 max-w-7xl mx-auto w-full">
-        <Outlet />
-      </main>
+      <div className="flex-1 min-w-0 flex flex-col">
+        {/* Top bar with theme toggle */}
+        <header className="h-12 flex items-center justify-end px-6 border-b bg-card/50 shrink-0">
+          <ThemeToggle />
+        </header>
+        <main className="flex-1 p-6 max-w-7xl mx-auto w-full">
+          <Outlet />
+        </main>
+      </div>
     </div>
   );
 }

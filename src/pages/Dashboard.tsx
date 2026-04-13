@@ -5,13 +5,14 @@
  */
 import { useData } from '@/contexts/DataContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Minus, Package, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Package, FileText, Info } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { useMemo, useState } from 'react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { toast } from 'sonner';
 
 /**
@@ -193,7 +194,7 @@ export default function DashboardPage() {
 
       {/* ===== Kartu Ringkasan Komoditas ===== */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-        {summaryCards.map(({ komoditas: k, latest, trend, pct }) => (
+        {summaryCards.map(({ komoditas: k, latest, trend, pct, diff }) => (
           <Card key={k.id} className="overflow-hidden hover:shadow-md transition-shadow">
             <CardContent className="p-0">
               {/* Gambar komoditas */}
@@ -207,15 +208,29 @@ export default function DashboardPage() {
               <div className="p-3 space-y-1.5">
                 {/* Nama komoditas */}
                 <h3 className="text-sm font-semibold leading-tight truncate">{k.nama}</h3>
-                {/* Harga rata-rata terkini */}
+                {/* Harga rata-rata + info button terakhir update */}
                 <div className="flex items-center gap-1">
                   <p className="text-sm font-bold">
                     {latest ? `Rp ${latest.harga_rata_rata.toLocaleString('id-ID')}` : '-'}
                   </p>
                   <span className="text-xs text-muted-foreground">/ {k.satuan_dasar}</span>
+                  {/* Tombol info: kapan terakhir data diperbarui */}
+                  {latest && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button className="ml-auto p-0.5 rounded-full hover:bg-muted transition-colors" aria-label="Info update terakhir">
+                          <Info className="h-3.5 w-3.5 text-muted-foreground" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent side="top" className="w-auto text-xs p-2">
+                        <p className="font-medium">Update terakhir:</p>
+                        <p className="text-muted-foreground">{new Date(latest.tanggal).toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                      </PopoverContent>
+                    </Popover>
+                  )}
                 </div>
-                {/* Indikator tren harga */}
-                <div className="flex items-center gap-1">
+                {/* Indikator tren: arrow + persentase + selisih Rp (seperti referensi) */}
+                <div className="flex items-center gap-1 flex-wrap">
                   {trend === 'naik' && <TrendingUp className="h-3.5 w-3.5 text-danger" />}
                   {trend === 'turun' && <TrendingDown className="h-3.5 w-3.5 text-success" />}
                   {trend === 'stabil' && <Minus className="h-3.5 w-3.5 text-warning" />}
@@ -225,13 +240,13 @@ export default function DashboardPage() {
                       : `${pct >= 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(2)}%`
                     }
                   </span>
+                  {/* Selisih harga absolut dalam Rp */}
+                  {diff !== 0 && (
+                    <span className={`text-[10px] ${getTrendColor(trend)}`}>
+                      (Rp {diff > 0 ? '+' : ''}{Math.round(diff).toLocaleString('id-ID')})
+                    </span>
+                  )}
                 </div>
-                {/* Badge tren */}
-                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${getTrendBg(trend)}`}>
-                  {trend === 'naik' ? 'Harga Naik' : trend === 'turun' ? 'Harga Turun' : 'Stabil'}
-                </Badge>
-                {/* Progress bar intensitas perubahan */}
-                <Progress value={Math.min(Math.abs(pct) * 10, 100)} className="h-1" />
               </div>
             </CardContent>
           </Card>
