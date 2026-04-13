@@ -151,7 +151,8 @@ export default function HargaRutinPage() {
     setEditingId(h.id); setNamaEnumerator(h.nama_enumerator);
     setTanggal(new Date(h.tanggal)); setPasarId(h.pasar_id);
     setKomoditasId(h.komoditas_id); setKelasKomoditas(h.kelas_komoditas);
-    setTempatUsahaId(h.tempat_usaha_id); setHarga(h.harga);
+    setTempatUsahaId(h.tempat_usaha_id); setHarga(h.harga_input);
+    setJumlahInput(h.jumlah_input); setSatuanInput(h.satuan_input);
     setStep(2); setShowForm(true);
   };
 
