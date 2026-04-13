@@ -308,10 +308,40 @@ export default function HargaRutinPage() {
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Input harga dan satuan berat */}
                 <div className="space-y-2">
                   <Label>Harga (Rp)</Label>
                   <Input type="number" value={harga || ''} onChange={e => setHarga(parseFloat(e.target.value) || 0)} placeholder="0" />
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Jumlah</Label>
+                    <Input type="number" value={jumlahInput || ''} onChange={e => setJumlahInput(parseFloat(e.target.value) || 0)} placeholder="1" min={0.01} step="any" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Satuan</Label>
+                    <Select value={satuanInput} onValueChange={v => setSatuanInput(v as SatuanDasar)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {compatibleSatuanOptions.map(s => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                {/* Hasil konversi otomatis — harga per satuan dasar komoditas */}
+                {harga > 0 && jumlahInput > 0 && (
+                  <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-1">
+                    <p className="text-xs text-muted-foreground">Harga terstandarisasi per {satuanDasar}:</p>
+                    <p className="text-lg font-bold text-accent">Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}</p>
+                    {satuanInput !== satuanDasar && (
+                      <p className="text-xs text-muted-foreground">
+                        Rp {harga.toLocaleString('id-ID')} / {jumlahInput} {satuanInput} → Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setStep(1)} className="flex-1">Kembali</Button>
                   <Button onClick={handleReview} className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90">Lanjut</Button>
