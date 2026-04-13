@@ -163,7 +163,7 @@ export default function HargaRutinPage() {
 
   /** Validasi sebelum review */
   const handleReview = () => {
-    if (!komoditasId || !kelasKomoditas || !tempatUsahaId || harga <= 0) { toast.error('Lengkapi semua field'); return; }
+    if (!komoditasId || !kelasKomoditas || !tempatUsahaId || harga <= 0 || jumlahInput <= 0) { toast.error('Lengkapi semua field'); return; }
     if (usedKelas.has(kelasKomoditas) && !editingId) { toast.error(`Kelas ${kelasKomoditas} sudah diinput untuk komoditas ini hari ini`); return; }
     setReviewOpen(true);
   };
