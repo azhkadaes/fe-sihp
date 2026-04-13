@@ -139,7 +139,8 @@ export default function HargaRutinPage() {
   /* ===== Handler form ===== */
   const resetForm = () => {
     setStep(1); setNamaEnumerator(''); setTanggal(undefined); setPasarId('');
-    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0); setEditingId(null);
+    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0);
+    setJumlahInput(1); setSatuanInput('kg'); setEditingId(null);
   };
 
   const openForm = () => { resetForm(); setShowForm(true); };
