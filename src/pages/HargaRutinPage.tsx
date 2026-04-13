@@ -11,7 +11,8 @@
  */
 import { useState, useMemo, useRef } from 'react';
 import { useData } from '@/contexts/DataContext';
-import type { HargaRutin, KelasKomoditas } from '@/types';
+import type { HargaRutin, KelasKomoditas, SatuanDasar } from '@/types';
+import { SATUAN_DASAR_OPTIONS, KONVERSI_SATUAN, hitungHargaStandar } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
