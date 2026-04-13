@@ -466,7 +466,7 @@ export default function HargaRutinPage() {
                     <p className="text-xs text-muted-foreground mt-1">
                       {pas?.nama} • {h.tanggal} • {h.nama_enumerator}
                     </p>
-                    <p className="text-sm font-bold mt-1 text-accent">Rp {h.harga.toLocaleString('id-ID')}</p>
+                    <p className="text-sm font-bold mt-1 text-accent">Rp {h.harga.toLocaleString('id-ID')}/{kom?.satuan_dasar || ''}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {/* Badge status — hijau final, kuning proses */}
