@@ -389,7 +389,8 @@ export default function HargaRutinPage() {
                 <span className="text-muted-foreground">Komoditas</span><span className="font-medium">{komoditasName}</span>
                 <span className="text-muted-foreground">Kelas</span><span className="font-medium capitalize">{kelasKomoditas}</span>
                 <span className="text-muted-foreground">Tempat Usaha</span><span className="font-medium">{tuName}</span>
-                <span className="text-muted-foreground">Harga</span><span className="font-bold text-accent">Rp {harga.toLocaleString('id-ID')}</span>
+                <span className="text-muted-foreground">Harga Input</span><span className="font-medium">Rp {harga.toLocaleString('id-ID')} / {jumlahInput} {satuanInput}</span>
+                <span className="text-muted-foreground">Harga Standar</span><span className="font-bold text-accent">Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}</span>
               </div>
             </div>
             <DialogFooter>
