@@ -183,43 +183,43 @@ function generateMockData() {
 
   for (let i = 6; i >= 0; i--) {
     const tgl = daysAgo(i);
-    // Beras Premium — 3 kelas
+    // Beras Premium (satuan_dasar: kg) — harga sudah per kg
     mockHargaRutin.push(
-      { id: `hr-beras-b-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[0], harga: berasHargaBesar[6 - i], status: 'finalisasi' },
-      { id: `hr-beras-m-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[1], harga: berasHargaMenengah[6 - i], status: 'finalisasi' },
-      { id: `hr-beras-k-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[2], harga: berasHargaKecil[6 - i], status: 'finalisasi' },
+      { id: `hr-beras-b-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[0], harga_input: berasHargaBesar[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: berasHargaBesar[6 - i], status: 'finalisasi' },
+      { id: `hr-beras-m-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[1], harga_input: berasHargaMenengah[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: berasHargaMenengah[6 - i], status: 'finalisasi' },
+      { id: `hr-beras-k-${i}`, nama_enumerator: 'Andi Surveyor', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[0], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[2], harga_input: berasHargaKecil[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: berasHargaKecil[6 - i], status: 'finalisasi' },
     );
   }
 
   // Data harga 7 hari — Pasar Andir, Cabai Merah Keriting
-  const cabaiHargaBesar = [75000, 72000, 68000, 65000, 60000, 58000, 55000]; // tren turun
+  const cabaiHargaBesar = [75000, 72000, 68000, 65000, 60000, 58000, 55000];
   const cabaiHargaMenengah = [65000, 63000, 60000, 58000, 55000, 52000, 50000];
   const cabaiHargaKecil = [55000, 53000, 50000, 48000, 46000, 45000, 43000];
 
   for (let i = 6; i >= 0; i--) {
     const tgl = daysAgo(i);
     mockHargaRutin.push(
-      { id: `hr-cabai-b-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[0], harga: cabaiHargaBesar[6 - i], status: 'finalisasi' },
-      { id: `hr-cabai-m-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[1], harga: cabaiHargaMenengah[6 - i], status: 'finalisasi' },
-      { id: `hr-cabai-k-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[2], harga: cabaiHargaKecil[6 - i], status: 'finalisasi' },
+      { id: `hr-cabai-b-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[0], harga_input: cabaiHargaBesar[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: cabaiHargaBesar[6 - i], status: 'finalisasi' },
+      { id: `hr-cabai-m-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[1], harga_input: cabaiHargaMenengah[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: cabaiHargaMenengah[6 - i], status: 'finalisasi' },
+      { id: `hr-cabai-k-${i}`, nama_enumerator: 'Budi Petugas', tanggal: tgl, pasar_id: pasarIds[0], komoditas_id: komIds[1], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[2], harga_input: cabaiHargaKecil[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: cabaiHargaKecil[6 - i], status: 'finalisasi' },
     );
   }
 
   // Data harga 7 hari — Pasar Kosambi, Bawang Merah
-  const bawangHargaBesar = [42000, 43000, 44000, 46000, 47000, 48000, 50000]; // tren naik
+  const bawangHargaBesar = [42000, 43000, 44000, 46000, 47000, 48000, 50000];
   const bawangHargaMenengah = [38000, 39000, 40000, 41000, 42000, 43000, 44000];
   const bawangHargaKecil = [34000, 35000, 35500, 36000, 37000, 38000, 39000];
 
   for (let i = 6; i >= 0; i--) {
     const tgl = daysAgo(i);
     mockHargaRutin.push(
-      { id: `hr-bawang-b-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[3], harga: bawangHargaBesar[6 - i], status: 'finalisasi' },
-      { id: `hr-bawang-m-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[4], harga: bawangHargaMenengah[6 - i], status: 'finalisasi' },
-      { id: `hr-bawang-k-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[5], harga: bawangHargaKecil[6 - i], status: 'finalisasi' },
+      { id: `hr-bawang-b-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[3], harga_input: bawangHargaBesar[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: bawangHargaBesar[6 - i], status: 'finalisasi' },
+      { id: `hr-bawang-m-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[4], harga_input: bawangHargaMenengah[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: bawangHargaMenengah[6 - i], status: 'finalisasi' },
+      { id: `hr-bawang-k-${i}`, nama_enumerator: 'Cici Enumerator', tanggal: tgl, pasar_id: pasarIds[1], komoditas_id: komIds[2], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[5], harga_input: bawangHargaKecil[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: bawangHargaKecil[6 - i], status: 'finalisasi' },
     );
   }
 
-  // Data harga 7 hari — Pasar Caringin, Minyak Goreng (stabil)
+  // Data harga 7 hari — Pasar Caringin, Minyak Goreng (stabil, satuan_dasar: liter)
   const minyakHargaBesar = [20000, 20000, 20000, 20000, 20000, 20000, 20000];
   const minyakHargaMenengah = [18500, 18500, 18500, 18500, 18500, 18500, 18500];
   const minyakHargaKecil = [17000, 17000, 17000, 17000, 17000, 17000, 17000];
@@ -227,9 +227,9 @@ function generateMockData() {
   for (let i = 6; i >= 0; i--) {
     const tgl = daysAgo(i);
     mockHargaRutin.push(
-      { id: `hr-minyak-b-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[6], harga: minyakHargaBesar[6 - i], status: 'finalisasi' },
-      { id: `hr-minyak-m-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[7], harga: minyakHargaMenengah[6 - i], status: 'finalisasi' },
-      { id: `hr-minyak-k-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[8], harga: minyakHargaKecil[6 - i], status: 'finalisasi' },
+      { id: `hr-minyak-b-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[6], harga_input: minyakHargaBesar[6 - i], jumlah_input: 1, satuan_input: 'liter', harga: minyakHargaBesar[6 - i], status: 'finalisasi' },
+      { id: `hr-minyak-m-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[7], harga_input: minyakHargaMenengah[6 - i], jumlah_input: 1, satuan_input: 'liter', harga: minyakHargaMenengah[6 - i], status: 'finalisasi' },
+      { id: `hr-minyak-k-${i}`, nama_enumerator: 'Dedi Surveyor', tanggal: tgl, pasar_id: pasarIds[2], komoditas_id: komIds[3], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[8], harga_input: minyakHargaKecil[6 - i], jumlah_input: 1, satuan_input: 'liter', harga: minyakHargaKecil[6 - i], status: 'finalisasi' },
     );
   }
 
@@ -241,16 +241,16 @@ function generateMockData() {
   for (let i = 6; i >= 0; i--) {
     const tgl = daysAgo(i);
     mockHargaRutin.push(
-      { id: `hr-ayam-b-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[9], harga: ayamHargaBesar[6 - i], status: 'finalisasi' },
-      { id: `hr-ayam-m-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[10], harga: ayamHargaMenengah[6 - i], status: 'finalisasi' },
-      { id: `hr-ayam-k-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[11], harga: ayamHargaKecil[6 - i], status: 'finalisasi' },
+      { id: `hr-ayam-b-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[9], harga_input: ayamHargaBesar[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: ayamHargaBesar[6 - i], status: 'finalisasi' },
+      { id: `hr-ayam-m-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[10], harga_input: ayamHargaMenengah[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: ayamHargaMenengah[6 - i], status: 'finalisasi' },
+      { id: `hr-ayam-k-${i}`, nama_enumerator: 'Evi Petugas', tanggal: tgl, pasar_id: pasarIds[3], komoditas_id: komIds[5], kelas_komoditas: 'kecil', tempat_usaha_id: tuIds[11], harga_input: ayamHargaKecil[6 - i], jumlah_input: 1, satuan_input: 'kg', harga: ayamHargaKecil[6 - i], status: 'finalisasi' },
     );
   }
 
   // Tambah beberapa entry "dalam_proses" untuk hari ini
   mockHargaRutin.push(
-    { id: 'hr-proses-1', nama_enumerator: 'Fani Petugas', tanggal: daysAgo(0), pasar_id: pasarIds[1], komoditas_id: komIds[0], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[3], harga: 15800, status: 'dalam_proses' },
-    { id: 'hr-proses-2', nama_enumerator: 'Fani Petugas', tanggal: daysAgo(0), pasar_id: pasarIds[1], komoditas_id: komIds[0], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[4], harga: 14100, status: 'dalam_proses' },
+    { id: 'hr-proses-1', nama_enumerator: 'Fani Petugas', tanggal: daysAgo(0), pasar_id: pasarIds[1], komoditas_id: komIds[0], kelas_komoditas: 'besar', tempat_usaha_id: tuIds[3], harga_input: 15800, jumlah_input: 1, satuan_input: 'kg', harga: 15800, status: 'dalam_proses' },
+    { id: 'hr-proses-2', nama_enumerator: 'Fani Petugas', tanggal: daysAgo(0), pasar_id: pasarIds[1], komoditas_id: komIds[0], kelas_komoditas: 'menengah', tempat_usaha_id: tuIds[4], harga_input: 14100, jumlah_input: 1, satuan_input: 'kg', harga: 14100, status: 'dalam_proses' },
   );
 
   return { mockPasar, mockKomoditas, mockTempatUsaha, mockKomoditasDijual, mockHargaRutin };
