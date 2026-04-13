@@ -1,22 +1,31 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Link, useLocation, Outlet } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { ThemeToggle } from '@/components/ThemeToggle';
-import { Button } from '@/components/ui/button';
+import React, { useState, useRef, useEffect } from "react";
+import { Link, useLocation, Outlet } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard, Store, Package, Building2, ClipboardList, BarChart3,
-  Menu, X, LogOut, ChevronLeft, ChevronRight,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { useIsMobile } from '@/hooks/use-mobile';
+  LayoutDashboard,
+  Store,
+  Package,
+  Building2,
+  ClipboardList,
+  BarChart3,
+  Menu,
+  X,
+  LogOut,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const menuItems = [
-  { title: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { title: 'Pasar', path: '/pasar', icon: Store },
-  { title: 'Komoditas', path: '/komoditas', icon: Package },
-  { title: 'Tempat Usaha', path: '/tempat-usaha', icon: Building2 },
-  { title: 'Harga Rutin', path: '/harga-rutin', icon: ClipboardList },
-  { title: 'Harga Pelaporan', path: '/harga-pelaporan', icon: BarChart3 },
+  { title: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+  { title: "Pasar", path: "/pasar", icon: Store },
+  { title: "Komoditas", path: "/komoditas", icon: Package },
+  { title: "Tempat Usaha", path: "/tempat-usaha", icon: Building2 },
+  { title: "Harga Rutin", path: "/harga-rutin", icon: ClipboardList },
+  { title: "Harga Pelaporan", path: "/harga-pelaporan", icon: BarChart3 },
 ];
 
 export default function AppLayout() {
@@ -35,11 +44,13 @@ export default function AppLayout() {
         setMenuOpen(false);
       }
     };
-    if (menuOpen) document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    if (menuOpen) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  useEffect(() => { setMenuOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
   // Mobile: top navbar with burger
   if (isMobile) {
@@ -47,25 +58,35 @@ export default function AppLayout() {
       <div className="min-h-screen flex flex-col">
         <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
           <div className="flex h-14 items-center justify-between px-4">
-            <span className="text-base font-bold text-accent tracking-tight">Harga Pangan</span>
+            <span className="text-base font-bold text-accent tracking-tight">
+              Harga Pangan
+            </span>
             <div className="flex items-center gap-2">
               <ThemeToggle />
               <div ref={menuRef}>
-                <Button variant="ghost" size="icon" onClick={() => setMenuOpen(!menuOpen)}>
-                  {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setMenuOpen(!menuOpen)}
+                >
+                  {menuOpen ? (
+                    <X className="h-5 w-5" />
+                  ) : (
+                    <Menu className="h-5 w-5" />
+                  )}
                 </Button>
                 {menuOpen && (
                   <div className="absolute left-0 right-0 top-14 bg-card border-b shadow-lg animate-in slide-in-from-top-2 duration-200 z-50">
                     <nav className="flex flex-col p-2">
-                      {menuItems.map(item => (
+                      {menuItems.map((item) => (
                         <Link
                           key={item.path}
                           to={item.path}
                           className={cn(
-                            'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors',
+                            "flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-colors",
                             isActive(item.path)
-                              ? 'bg-accent/15 text-accent'
-                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                              ? "bg-accent/15 text-accent"
+                              : "text-muted-foreground hover:bg-muted hover:text-foreground",
                           )}
                         >
                           <item.icon className="h-5 w-5" />
@@ -74,7 +95,10 @@ export default function AppLayout() {
                       ))}
                       <div className="border-t mt-2 pt-2">
                         <button
-                          onClick={() => { logout(); setMenuOpen(false); }}
+                          onClick={() => {
+                            logout();
+                            setMenuOpen(false);
+                          }}
                           className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 w-full"
                         >
                           <LogOut className="h-5 w-5" />
@@ -99,31 +123,46 @@ export default function AppLayout() {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar */}
-      <aside className={cn(
-        'sticky top-0 h-screen border-r bg-sidebar flex flex-col transition-all duration-200 shrink-0',
-        collapsed ? 'w-16' : 'w-56'
-      )}>
+      <aside
+        className={cn(
+          "sticky top-0 h-screen border-r bg-sidebar flex flex-col transition-all duration-200 shrink-0",
+          collapsed ? "w-16" : "w-56",
+        )}
+      >
         {/* Logo */}
         <div className="h-14 flex items-center justify-between px-3 border-b">
-          {!collapsed && <span className="text-base font-bold text-accent truncate">Harga Pangan</span>}
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => setCollapsed(c => !c)}>
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          {!collapsed && (
+            <span className="text-base font-bold text-accent truncate">
+              SIHP
+            </span>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={() => setCollapsed((c) => !c)}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
           </Button>
         </div>
 
         {/* Nav */}
         <nav className="flex-1 py-2 px-2 space-y-0.5 overflow-y-auto">
-          {menuItems.map(item => (
+          {menuItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
               title={collapsed ? item.title : undefined}
               className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
-                collapsed && 'justify-center px-0',
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                collapsed && "justify-center px-0",
                 isActive(item.path)
-                  ? 'bg-sidebar-accent/15 text-accent'
-                  : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground'
+                  ? "bg-sidebar-accent/15 text-accent"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent/10 hover:text-sidebar-foreground",
               )}
             >
               <item.icon className="h-5 w-5 shrink-0" />
@@ -134,15 +173,20 @@ export default function AppLayout() {
 
         {/* Footer */}
         <div className="border-t p-2 space-y-1">
-          <div className={cn('flex items-center', collapsed ? 'justify-center' : 'px-2')}>
+          <div
+            className={cn(
+              "flex items-center",
+              collapsed ? "justify-center" : "px-2",
+            )}
+          >
             <ThemeToggle />
           </div>
           <button
             onClick={logout}
-            title={collapsed ? 'Keluar' : undefined}
+            title={collapsed ? "Keluar" : undefined}
             className={cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 w-full transition-colors',
-              collapsed && 'justify-center px-0'
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 w-full transition-colors",
+              collapsed && "justify-center px-0",
             )}
           >
             <LogOut className="h-5 w-5 shrink-0" />
