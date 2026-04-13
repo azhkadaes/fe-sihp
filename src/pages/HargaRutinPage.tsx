@@ -275,7 +275,7 @@ export default function HargaRutinPage() {
                 </p>
                 <div className="space-y-2">
                   <Label>Komoditas</Label>
-                  <Select value={komoditasId} onValueChange={v => { setKomoditasId(v); setKelasKomoditas(''); setTempatUsahaId(''); }}>
+                  <Select value={komoditasId} onValueChange={v => { setKomoditasId(v); setKelasKomoditas(''); setTempatUsahaId(''); const kom = komoditas.find(k => k.id === v); if (kom) setSatuanInput(kom.satuan_dasar); }}>
                     <SelectTrigger><SelectValue placeholder="Pilih komoditas" /></SelectTrigger>
                     <SelectContent>
                       {(komoditasForPasar.length > 0 ? komoditasForPasar : komoditas).map(k => (
