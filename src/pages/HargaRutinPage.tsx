@@ -173,13 +173,19 @@ export default function HargaRutinPage() {
     const data = {
       nama_enumerator: namaEnumerator, tanggal: tanggalStr, pasar_id: pasarId,
       komoditas_id: komoditasId, kelas_komoditas: kelasKomoditas as KelasKomoditas,
-      tempat_usaha_id: tempatUsahaId, harga, status: 'finalisasi' as const,
+      tempat_usaha_id: tempatUsahaId,
+      harga_input: harga,
+      jumlah_input: jumlahInput,
+      satuan_input: satuanInput,
+      harga: hargaStandar,
+      status: 'finalisasi' as const,
     };
     if (editingId) { updateHargaRutin(editingId, data); toast.success('Diperbarui & difinalisasi'); }
     else { addHargaRutin(data); toast.success('Data difinalisasi'); }
     setReviewOpen(false);
     // Reset hanya field step 2, tetap di step 2 untuk input kelas berikutnya
-    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0); setEditingId(null);
+    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0);
+    setJumlahInput(1); setSatuanInput('kg'); setEditingId(null);
   };
 
   /* ===== Ekspor CSV ===== */
