@@ -1,16 +1,12 @@
 /**
  * TempatUsahaPage — Halaman CRUD Tempat Usaha.
  * Menampilkan daftar toko/pedagang beserta komoditas yang dijual.
- * Mendukung sub-CRUD komoditas dijual dengan klasifikasi kelas otomatis.
- *
- * Warna kelas komoditas (konsisten di seluruh aplikasi):
- * - Besar: Gold (kelas-besar) — pedagang besar dengan harga tinggi
- * - Menengah: Biru (kelas-menengah) — pedagang menengah
- * - Kecil: Abu (kelas-kecil) — pedagang kecil dengan harga rendah
+ * Sub-CRUD komoditas dijual dengan klasifikasi kelas otomatis (distribusi normal).
  */
 import { useState, useRef } from 'react';
 import { useData } from '@/contexts/DataContext';
-import type { TempatUsaha, KomoditasDijual } from '@/types';
+import type { TempatUsaha, KomoditasDijual, PeriodeUnit } from '@/types';
+import { POLA_DISTRIBUSI_OPTIONS, PERIODE_UNIT_OPTIONS, SATUAN_DASAR_OPTIONS } from '@/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,14 +33,11 @@ const emptyTU: Omit<TempatUsaha, 'id'> = { nama: '', nama_pemilik: '', nama_nara
 /** Form default untuk komoditas dijual baru */
 const emptyKD: Omit<KomoditasDijual, 'id'> = {
   tempat_usaha_id: '', komoditas_id: '', harga_normal: 0, harga_mahal: 0,
-  satuan_stok: 'kg', nilai_stok: 0, nilai_periode: 0, lokasi_supplier: '',
-  pola_distribusi: 0, standardized_stock_periode: 0, is_active: true,
+  satuan_stok: 'kg', nilai_stok: 0, nilai_periode: 1, periode_unit: 'minggu',
+  lokasi_supplier: '', pola_distribusi: '', standardized_stock_periode: 0, is_active: true,
 };
 
-/**
- * Helper: mendapatkan style warna untuk badge kelas komoditas.
- * Menggunakan token dari design system (--kelas-besar, --kelas-menengah, --kelas-kecil).
- */
+/** Helper: style badge kelas komoditas */
 const getKelasStyle = (kelas: string) => {
   switch (kelas) {
     case 'besar': return 'border-kelas-besar text-kelas-besar bg-kelas-besar/10';
@@ -58,7 +51,7 @@ export default function TempatUsahaPage() {
   const { tempatUsaha, addTempatUsaha, updateTempatUsaha, deleteTempatUsaha, pasar, komoditas, komoditasDijual, addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual, getKelasForTU } = useData();
   const isMobile = useIsMobile();
 
-  /* ===== State utama ===== */
+  /* ===== State ===== */
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TempatUsaha | null>(null);
@@ -92,13 +85,8 @@ export default function TempatUsahaPage() {
 
   /* ===== Handler form Tempat Usaha ===== */
   const openAdd = () => {
-    setEditing(null);
-    setForm(emptyTU);
-    setSameAsOwner(true);
-    setBerjualanDate(undefined);
-    setDialogOpen(true);
+    setEditing(null); setForm(emptyTU); setSameAsOwner(true); setBerjualanDate(undefined); setDialogOpen(true);
   };
-
   const openEdit = (t: TempatUsaha) => {
     setEditing(t);
     setForm({ nama: t.nama, nama_pemilik: t.nama_pemilik, nama_narahubung: t.nama_narahubung, nomor_narahubung: t.nomor_narahubung, berjualan_sejak: t.berjualan_sejak, is_active: t.is_active, pasar_id: t.pasar_id });
@@ -106,11 +94,9 @@ export default function TempatUsahaPage() {
     setBerjualanDate(t.berjualan_sejak ? new Date(t.berjualan_sejak) : undefined);
     setDialogOpen(true);
   };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nama.trim()) { toast.error('Nama wajib diisi'); return; }
-    // Jika checkbox "sama dengan pemilik" aktif, salin nama_pemilik ke nama_narahubung
     const narahubung = sameAsOwner ? form.nama_pemilik : form.nama_narahubung;
     const data = { ...form, nama_narahubung: narahubung, berjualan_sejak: berjualanDate ? format(berjualanDate, 'yyyy-MM-dd') : form.berjualan_sejak };
     if (editing) { updateTempatUsaha(editing.id, data); toast.success('Diperbarui'); }
@@ -120,23 +106,15 @@ export default function TempatUsahaPage() {
 
   /* ===== Ekspor & Impor CSV ===== */
   const handleExport = () => {
-    const data = tempatUsaha.map(t => ({
-      ...t,
-      pasar_nama: pasar.find(p => p.id === t.pasar_id)?.nama || '',
-    }));
+    const data = tempatUsaha.map(t => ({ ...t, pasar_nama: pasar.find(p => p.id === t.pasar_id)?.nama || '' }));
     exportToCSV(data, 'tempat-usaha', [
-      { key: 'nama', label: 'Nama' },
-      { key: 'nama_pemilik', label: 'Pemilik' },
-      { key: 'pasar_nama', label: 'Pasar' },
-      { key: 'berjualan_sejak', label: 'Berjualan Sejak' },
-      { key: 'is_active', label: 'Aktif' },
+      { key: 'nama', label: 'Nama' }, { key: 'nama_pemilik', label: 'Pemilik' },
+      { key: 'pasar_nama', label: 'Pasar' }, { key: 'berjualan_sejak', label: 'Berjualan Sejak' }, { key: 'is_active', label: 'Aktif' },
     ]);
     toast.success('Data diekspor');
   };
-
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
       const rows = parseCSV(reader.result as string);
@@ -144,15 +122,7 @@ export default function TempatUsahaPage() {
       rows.forEach(r => {
         if (r['Nama']?.trim()) {
           const matchPasar = pasar.find(p => p.nama === r['Pasar']);
-          addTempatUsaha({
-            nama: r['Nama'].trim(),
-            nama_pemilik: r['Pemilik'] || '',
-            nama_narahubung: '',
-            nomor_narahubung: '',
-            berjualan_sejak: r['Berjualan Sejak'] || '',
-            is_active: r['Aktif'] === '0' ? 0 : 1,
-            pasar_id: matchPasar?.id || '',
-          });
+          addTempatUsaha({ nama: r['Nama'].trim(), nama_pemilik: r['Pemilik'] || '', nama_narahubung: '', nomor_narahubung: '', berjualan_sejak: r['Berjualan Sejak'] || '', is_active: r['Aktif'] === '0' ? 0 : 1, pasar_id: matchPasar?.id || '' });
           count++;
         }
       });
@@ -173,17 +143,22 @@ export default function TempatUsahaPage() {
 
   const handleKDSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!kdForm.komoditas_id) { toast.error('Pilih komoditas'); return; }
+    if (kdForm.harga_normal <= 0) { toast.error('Harga normal harus > 0'); return; }
     if (editingKD) { updateKomoditasDijual(editingKD.id, kdForm); toast.success('Diperbarui'); }
     else { addKomoditasDijual(kdForm); toast.success('Ditambahkan'); }
     setKdDialogOpen(false);
   };
+
+  /** Label pola distribusi dari value */
+  const getPolaLabel = (val: string) => POLA_DISTRIBUSI_OPTIONS.find(o => o.value === val)?.label || val || '-';
+  const getPeriodeLabel = (val: PeriodeUnit) => PERIODE_UNIT_OPTIONS.find(o => o.value === val)?.label || val;
 
   /* ===== Detail View — Komoditas Dijual ===== */
   if (selectedTU) {
     const tuKelas = getKelasForTU(selectedTU.id);
     return (
       <div className="space-y-4">
-        {/* Header detail */}
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedTU(null)}><ArrowLeft className="h-4 w-4" /></Button>
           <div className="flex-1 min-w-0">
@@ -192,62 +167,116 @@ export default function TempatUsahaPage() {
           </div>
         </div>
 
-        {/* Tombol tambah komoditas */}
         <Button onClick={openAddKD} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
           <Plus className="h-4 w-4 mr-1" /> Tambah Komoditas
         </Button>
 
-        {/* Dialog form komoditas dijual */}
+        {/* ===== Dialog Form Komoditas Dijual (dengan sub-kategori) ===== */}
         <Dialog open={kdDialogOpen} onOpenChange={setKdDialogOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader><DialogTitle>{editingKD ? 'Edit' : 'Tambah'} Komoditas Dijual</DialogTitle></DialogHeader>
-            <form onSubmit={handleKDSubmit} className="space-y-3">
-              <div className="space-y-2">
-                <Label>Komoditas</Label>
-                <Select value={kdForm.komoditas_id} onValueChange={v => setKdForm({ ...kdForm, komoditas_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Pilih komoditas" /></SelectTrigger>
-                  <SelectContent>{komoditas.map(k => <SelectItem key={k.id} value={k.id}>{k.nama}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Harga Normal</Label><Input type="number" value={kdForm.harga_normal} onChange={e => setKdForm({ ...kdForm, harga_normal: parseFloat(e.target.value) || 0 })} /></div>
-                <div className="space-y-2"><Label>Harga Mahal</Label><Input type="number" value={kdForm.harga_mahal} onChange={e => setKdForm({ ...kdForm, harga_mahal: parseFloat(e.target.value) || 0 })} /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleKDSubmit} className="space-y-5">
+              {/* --- Sub-kategori: Informasi Komoditas --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground border-b pb-1">Informasi Komoditas</h3>
                 <div className="space-y-2">
-                  <Label>Satuan Stok</Label>
-                  <Select value={kdForm.satuan_stok} onValueChange={v => setKdForm({ ...kdForm, satuan_stok: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                  <Label>Nama Komoditas</Label>
+                  <Select value={kdForm.komoditas_id} onValueChange={v => setKdForm({ ...kdForm, komoditas_id: v })}>
+                    <SelectTrigger><SelectValue placeholder="Pilih komoditas" /></SelectTrigger>
+                    <SelectContent>{komoditas.map(k => <SelectItem key={k.id} value={k.id}>{k.nama} ({k.satuan_dasar})</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* --- Sub-kategori: Harga --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground border-b pb-1">Harga</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Harga Normal (Rp)</Label>
+                    <Input type="number" value={kdForm.harga_normal || ''} onChange={e => setKdForm({ ...kdForm, harga_normal: parseFloat(e.target.value) || 0 })} placeholder="0" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Harga Mahal (Rp)</Label>
+                    <Input type="number" value={kdForm.harga_mahal || ''} onChange={e => setKdForm({ ...kdForm, harga_mahal: parseFloat(e.target.value) || 0 })} placeholder="0" />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Rata-rata harga: <span className="font-medium text-foreground">Rp {((kdForm.harga_normal + kdForm.harga_mahal) / 2).toLocaleString('id-ID')}</span>
+                  {' '}— digunakan untuk klasifikasi kelas otomatis.
+                </p>
+              </div>
+
+              {/* --- Sub-kategori: Stok & Pola Distribusi --- */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-semibold text-muted-foreground border-b pb-1">Stok & Pola Distribusi</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Satuan Stok</Label>
+                    <Select value={kdForm.satuan_stok} onValueChange={v => setKdForm({ ...kdForm, satuan_stok: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {SATUAN_DASAR_OPTIONS.map(s => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Jumlah Stok</Label>
+                    <Input type="number" step="any" value={kdForm.nilai_stok || ''} onChange={e => setKdForm({ ...kdForm, nilai_stok: parseFloat(e.target.value) || 0 })} placeholder="0" />
+                  </div>
+                </div>
+
+                {/* Periode: jumlah + satuan periode */}
+                <div className="space-y-2">
+                  <Label>Periode Stok <span className="text-muted-foreground font-normal">(setiap berapa lama stok diisi ulang)</span></Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input type="number" min={1} value={kdForm.nilai_periode || ''} onChange={e => setKdForm({ ...kdForm, nilai_periode: parseInt(e.target.value) || 1 })} placeholder="1" />
+                    <Select value={kdForm.periode_unit} onValueChange={v => setKdForm({ ...kdForm, periode_unit: v as PeriodeUnit })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {PERIODE_UNIT_OPTIONS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Contoh: "2 Minggu" berarti stok diisi ulang setiap 2 minggu.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Pola Distribusi</Label>
+                  <Select value={kdForm.pola_distribusi} onValueChange={v => setKdForm({ ...kdForm, pola_distribusi: v })}>
+                    <SelectTrigger><SelectValue placeholder="Pilih pola distribusi" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="kg">Kg</SelectItem>
-                      <SelectItem value="liter">Liter</SelectItem>
-                      <SelectItem value="pcs">Pcs</SelectItem>
-                      <SelectItem value="ikat">Ikat</SelectItem>
+                      {POLA_DISTRIBUSI_OPTIONS.map(p => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2"><Label>Nilai Stok</Label><Input type="number" step="any" value={kdForm.nilai_stok} onChange={e => setKdForm({ ...kdForm, nilai_stok: parseFloat(e.target.value) || 0 })} /></div>
+
+                <div className="space-y-2">
+                  <Label>Lokasi Supplier</Label>
+                  <Input value={kdForm.lokasi_supplier} onChange={e => setKdForm({ ...kdForm, lokasi_supplier: e.target.value })} placeholder="Masukkan lokasi supplier" />
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2"><Label>Nilai Periode</Label><Input type="number" value={kdForm.nilai_periode} onChange={e => setKdForm({ ...kdForm, nilai_periode: parseInt(e.target.value) || 0 })} /></div>
-                <div className="space-y-2"><Label>Pola Distribusi</Label><Input type="number" value={kdForm.pola_distribusi} onChange={e => setKdForm({ ...kdForm, pola_distribusi: parseInt(e.target.value) || 0 })} /></div>
-              </div>
-              <div className="space-y-2"><Label>Lokasi Supplier</Label><Input value={kdForm.lokasi_supplier} onChange={e => setKdForm({ ...kdForm, lokasi_supplier: e.target.value })} /></div>
-              <div className="flex items-center gap-2">
+
+              {/* Status */}
+              <div className="flex items-center gap-2 pt-1">
                 <Switch checked={kdForm.is_active} onCheckedChange={c => setKdForm({ ...kdForm, is_active: c })} />
                 <Label>Aktif</Label>
               </div>
+
               <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Simpan</Button>
             </form>
           </DialogContent>
         </Dialog>
 
-        {/* Legenda kelas komoditas */}
+        {/* Legenda kelas */}
         <div className="flex flex-wrap gap-2 text-xs">
           <span className="text-muted-foreground">Kelas:</span>
           <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('besar')}`}>Besar</Badge>
           <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('menengah')}`}>Menengah</Badge>
           <Badge variant="outline" className={`text-xs capitalize ${getKelasStyle('kecil')}`}>Kecil</Badge>
+          <span className="text-muted-foreground ml-1">(dihitung otomatis berdasarkan distribusi normal harga)</span>
         </div>
 
         {/* Daftar komoditas dijual */}
@@ -260,10 +289,9 @@ export default function TempatUsahaPage() {
               <Card key={kd.id}>
                 <CardContent className="p-3">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <div className="flex items-center gap-2">
                         <h3 className="font-semibold text-sm">{kom?.nama || '-'}</h3>
-                        {/* Badge kelas — warna sesuai design system */}
                         {kelas && (
                           <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(kelas))}>
                             {kelas}
@@ -271,15 +299,15 @@ export default function TempatUsahaPage() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Normal: Rp {kd.harga_normal.toLocaleString('id-ID')} • Mahal: Rp {kd.harga_mahal.toLocaleString('id-ID')}
+                        Normal: Rp {kd.harga_normal.toLocaleString('id-ID')} • Mahal: Rp {kd.harga_mahal.toLocaleString('id-ID')} • Rata-rata: Rp {avgHarga.toLocaleString('id-ID')}
                       </p>
-                      <p className="text-xs text-muted-foreground">Rata-rata: Rp {avgHarga.toLocaleString('id-ID')}</p>
-                      {/* Status aktif/nonaktif */}
+                      <p className="text-xs text-muted-foreground">
+                        Stok: {kd.nilai_stok} {kd.satuan_stok} / {kd.nilai_periode} {getPeriodeLabel(kd.periode_unit)} • {getPolaLabel(kd.pola_distribusi)}
+                      </p>
                       <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${kd.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                         {kd.is_active ? 'Aktif' : 'Nonaktif'}
                       </span>
                     </div>
-                    {/* Aksi edit & hapus */}
                     <div className="flex gap-0.5">
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingKD(kd); setKdForm({ ...kd }); setKdDialogOpen(true); }}>
                         <Pencil className="h-3.5 w-3.5" />
@@ -306,7 +334,6 @@ export default function TempatUsahaPage() {
   /* ===== List View — Daftar Tempat Usaha ===== */
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Tempat Usaha</h1>
         <div className="flex items-center gap-2">
@@ -317,7 +344,6 @@ export default function TempatUsahaPage() {
             <Upload className="h-4 w-4 mr-1" /> Impor
           </Button>
           <input ref={fileInputRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
-          {/* Dialog tambah/edit tempat usaha */}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button onClick={openAdd} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
@@ -335,7 +361,6 @@ export default function TempatUsahaPage() {
                     <SelectContent>{pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                {/* Nama Pemilik */}
                 <div className="space-y-2">
                   <Label>Nama Pemilik</Label>
                   <Input value={form.nama_pemilik} onChange={e => {
@@ -343,7 +368,6 @@ export default function TempatUsahaPage() {
                     setForm(prev => ({ ...prev, nama_pemilik: val, ...(sameAsOwner ? { nama_narahubung: val } : {}) }));
                   }} />
                 </div>
-                {/* Checkbox: narahubung sama dengan pemilik */}
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <Checkbox id="same-owner" checked={sameAsOwner} onCheckedChange={(v) => {
@@ -355,7 +379,6 @@ export default function TempatUsahaPage() {
                       Narahubung sama dengan pemilik
                     </label>
                   </div>
-                  {/* Input narahubung terpisah — muncul hanya jika nama berbeda */}
                   {!sameAsOwner && (
                     <div className="space-y-2">
                       <Label>Nama Narahubung</Label>
@@ -364,7 +387,6 @@ export default function TempatUsahaPage() {
                   )}
                 </div>
                 <div className="space-y-2"><Label>Nomor Narahubung</Label><Input value={form.nomor_narahubung} onChange={e => setForm({ ...form, nomor_narahubung: e.target.value })} /></div>
-                {/* Calendar picker untuk tanggal berjualan */}
                 <div className="space-y-2">
                   <Label>Berjualan Sejak</Label>
                   <Popover>
@@ -392,7 +414,7 @@ export default function TempatUsahaPage() {
         </div>
       </div>
 
-      {/* Pencarian & Filter */}
+      {/* Filter */}
       <div className="flex flex-wrap gap-2">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -415,7 +437,7 @@ export default function TempatUsahaPage() {
         </Select>
       </div>
 
-      {/* Daftar tempat usaha */}
+      {/* Daftar */}
       <div className="space-y-2">
         {filtered.map(t => {
           const pas = pasar.find(p => p.id === t.pasar_id);
@@ -427,7 +449,6 @@ export default function TempatUsahaPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-sm truncate">{t.nama}</h3>
-                      {/* Badge status */}
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${t.is_active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                         {t.is_active ? 'Aktif' : 'Nonaktif'}
                       </span>
@@ -437,7 +458,6 @@ export default function TempatUsahaPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {/* Tombol edit — stop propagation agar tidak masuk detail */}
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={e => { e.stopPropagation(); openEdit(t); }}>
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>

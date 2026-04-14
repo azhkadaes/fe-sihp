@@ -2,12 +2,9 @@
  * HargaRutinPage — Halaman CRUD Harga Rutin.
  * Multi-step form: Step 1 (info dasar) → Step 2 (data harga) → Review → Finalisasi.
  *
- * Status warna:
- * - Finalisasi (hijau/success): data sudah dikonfirmasi, read-only
- * - Dalam Proses (kuning/warning): masih bisa diedit/dihapus
- *
- * Kelas komoditas warna:
- * - Besar (gold/kelas-besar), Menengah (biru/kelas-menengah), Kecil (abu/kelas-kecil)
+ * Perubahan penting:
+ * - Dropdown tempat usaha difilter berdasarkan kelas komoditas yang dipilih
+ * - Kelas dihitung otomatis dari distribusi normal harga rata-rata
  */
 import { useState, useMemo, useRef } from 'react';
 import { useData } from '@/contexts/DataContext';
@@ -32,7 +29,6 @@ import { exportToCSV, parseCSV } from '@/lib/csv-utils';
 
 const kelasOptions: KelasKomoditas[] = ['besar', 'menengah', 'kecil'];
 
-/** Helper: mendapatkan style warna untuk badge kelas */
 const getKelasStyle = (kelas: string) => {
   switch (kelas) {
     case 'besar': return 'border-kelas-besar text-kelas-besar bg-kelas-besar/10';
@@ -42,7 +38,6 @@ const getKelasStyle = (kelas: string) => {
   }
 };
 
-/** Helper: mendapatkan style warna untuk badge status */
 const getStatusStyle = (status: string) => {
   switch (status) {
     case 'finalisasi': return 'bg-success/15 text-success border-success/20';
@@ -52,7 +47,7 @@ const getStatusStyle = (status: string) => {
 };
 
 export default function HargaRutinPage() {
-  const { hargaRutin, addHargaRutin, updateHargaRutin, deleteHargaRutin, pasar, komoditas, tempatUsaha, komoditasDijual } = useData();
+  const { hargaRutin, addHargaRutin, updateHargaRutin, deleteHargaRutin, pasar, komoditas, tempatUsaha, komoditasDijual, getKelasForKomoditasInPasar } = useData();
 
   /* ===== State form ===== */
   const [search, setSearch] = useState('');
@@ -74,17 +69,14 @@ export default function HargaRutinPage() {
   const [satuanInput, setSatuanInput] = useState<SatuanDasar>('kg');
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  /** Satuan dasar komoditas yang sedang dipilih */
   const selectedKomoditas = komoditas.find(k => k.id === komoditasId);
   const satuanDasar = selectedKomoditas?.satuan_dasar || 'kg';
 
-  /** Opsi satuan yang kompatibel (massa↔massa, volume↔volume) */
   const compatibleSatuanOptions = useMemo(() => {
     const baseType = KONVERSI_SATUAN[satuanDasar]?.base || 'kg';
     return SATUAN_DASAR_OPTIONS.filter(s => KONVERSI_SATUAN[s.value].base === baseType);
   }, [satuanDasar]);
 
-  /** Harga terstandarisasi per satuan dasar (dihitung otomatis) */
   const hargaStandar = useMemo(() => {
     if (harga <= 0 || jumlahInput <= 0) return 0;
     return hitungHargaStandar(harga, jumlahInput, satuanInput, satuanDasar);
@@ -92,23 +84,34 @@ export default function HargaRutinPage() {
 
   const tanggalStr = tanggal ? format(tanggal, 'yyyy-MM-dd') : '';
 
-  /* ===== Filter dropdown berdasarkan relasi data ===== */
-  // Tempat usaha di pasar terpilih
+  /* ===== Kelas komoditas untuk pasar+komoditas terpilih ===== */
+  const kelasMap = useMemo(() => {
+    if (!pasarId || !komoditasId) return {};
+    return getKelasForKomoditasInPasar(pasarId, komoditasId);
+  }, [pasarId, komoditasId, getKelasForKomoditasInPasar]);
+
+  /* ===== Filter komoditas berdasarkan pasar ===== */
   const tuForPasar = tempatUsaha.filter(t => t.pasar_id === pasarId);
-  // Komoditas yang dijual di pasar terpilih
   const kdForPasar = komoditasDijual.filter(kd => tuForPasar.some(t => t.id === kd.tempat_usaha_id));
   const komoditasForPasar = komoditas.filter(k => kdForPasar.some(kd => kd.komoditas_id === k.id));
 
-  // Tempat usaha yang menjual komoditas terpilih
+  /**
+   * Filter tempat usaha berdasarkan kelas yang dipilih.
+   * Hanya tampilkan TU yang tergolong dalam kelas tersebut untuk komoditas ini.
+   */
   const tuFiltered = useMemo(() => {
-    if (!komoditasId || !kelasKomoditas) return [];
+    if (!komoditasId || !kelasKomoditas || !pasarId) return [];
     return tempatUsaha.filter(t => {
       if (t.pasar_id !== pasarId) return false;
-      return komoditasDijual.some(kd => kd.tempat_usaha_id === t.id && kd.komoditas_id === komoditasId);
+      // Cek apakah TU menjual komoditas ini
+      const hasKomoditas = komoditasDijual.some(kd => kd.tempat_usaha_id === t.id && kd.komoditas_id === komoditasId);
+      if (!hasKomoditas) return false;
+      // Cek apakah kelas TU sesuai dengan kelas yang dipilih
+      return kelasMap[t.id] === kelasKomoditas;
     });
-  }, [pasarId, komoditasId, kelasKomoditas, tempatUsaha, komoditasDijual]);
+  }, [pasarId, komoditasId, kelasKomoditas, tempatUsaha, komoditasDijual, kelasMap]);
 
-  /** Kelas yang sudah diinput untuk kombinasi tanggal+pasar+komoditas ini */
+  /** Kelas yang sudah diinput hari ini */
   const usedKelas = useMemo(() => {
     if (!tanggalStr || !pasarId || !komoditasId) return new Set<string>();
     return new Set(
@@ -118,13 +121,12 @@ export default function HargaRutinPage() {
     );
   }, [hargaRutin, tanggalStr, pasarId, komoditasId, editingId]);
 
-  /** Entry hari ini untuk komoditas & pasar yang sama — ditampilkan di bawah form */
   const sameDayEntries = useMemo(() => {
     if (!tanggalStr || !pasarId || !komoditasId) return [];
     return hargaRutin.filter(h => h.tanggal === tanggalStr && h.pasar_id === pasarId && h.komoditas_id === komoditasId);
   }, [hargaRutin, tanggalStr, pasarId, komoditasId]);
 
-  /* ===== Filter & Sort daftar utama ===== */
+  /* ===== Filter daftar utama ===== */
   const filtered = hargaRutin
     .filter(h => {
       const kom = komoditas.find(k => k.id === h.komoditas_id);
@@ -145,7 +147,6 @@ export default function HargaRutinPage() {
 
   const openForm = () => { resetForm(); setShowForm(true); };
 
-  /** Buka form edit — hanya untuk status "dalam_proses" */
   const openEdit = (h: HargaRutin) => {
     if (h.status === 'finalisasi') return;
     setEditingId(h.id); setNamaEnumerator(h.nama_enumerator);
@@ -161,29 +162,24 @@ export default function HargaRutinPage() {
     setStep(2);
   };
 
-  /** Validasi sebelum review */
   const handleReview = () => {
     if (!komoditasId || !kelasKomoditas || !tempatUsahaId || harga <= 0 || jumlahInput <= 0) { toast.error('Lengkapi semua field'); return; }
     if (usedKelas.has(kelasKomoditas) && !editingId) { toast.error(`Kelas ${kelasKomoditas} sudah diinput untuk komoditas ini hari ini`); return; }
     setReviewOpen(true);
   };
 
-  /** Finalisasi data — simpan dengan status "finalisasi" */
   const handleFinalize = () => {
     const data = {
       nama_enumerator: namaEnumerator, tanggal: tanggalStr, pasar_id: pasarId,
       komoditas_id: komoditasId, kelas_komoditas: kelasKomoditas as KelasKomoditas,
       tempat_usaha_id: tempatUsahaId,
-      harga_input: harga,
-      jumlah_input: jumlahInput,
-      satuan_input: satuanInput,
+      harga_input: harga, jumlah_input: jumlahInput, satuan_input: satuanInput,
       harga: hargaStandar,
       status: 'finalisasi' as const,
     };
     if (editingId) { updateHargaRutin(editingId, data); toast.success('Diperbarui & difinalisasi'); }
     else { addHargaRutin(data); toast.success('Data difinalisasi'); }
     setReviewOpen(false);
-    // Reset hanya field step 2, tetap di step 2 untuk input kelas berikutnya
     setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0);
     setJumlahInput(1); setSatuanInput('kg'); setEditingId(null);
   };
@@ -197,19 +193,14 @@ export default function HargaRutinPage() {
       tempat_usaha_nama: tempatUsaha.find(t => t.id === h.tempat_usaha_id)?.nama || '',
     }));
     exportToCSV(data, 'harga-rutin', [
-      { key: 'tanggal', label: 'Tanggal' },
-      { key: 'nama_enumerator', label: 'Enumerator' },
-      { key: 'pasar_nama', label: 'Pasar' },
-      { key: 'komoditas_nama', label: 'Komoditas' },
-      { key: 'kelas_komoditas', label: 'Kelas' },
-      { key: 'tempat_usaha_nama', label: 'Tempat Usaha' },
-      { key: 'harga', label: 'Harga' },
-      { key: 'status', label: 'Status' },
+      { key: 'tanggal', label: 'Tanggal' }, { key: 'nama_enumerator', label: 'Enumerator' },
+      { key: 'pasar_nama', label: 'Pasar' }, { key: 'komoditas_nama', label: 'Komoditas' },
+      { key: 'kelas_komoditas', label: 'Kelas' }, { key: 'tempat_usaha_nama', label: 'Tempat Usaha' },
+      { key: 'harga', label: 'Harga' }, { key: 'status', label: 'Status' },
     ]);
     toast.success('Data diekspor');
   };
 
-  /* ===== Lookup nama untuk review ===== */
   const pasarName = pasar.find(p => p.id === pasarId)?.nama || '-';
   const komoditasName = komoditas.find(k => k.id === komoditasId)?.nama || '-';
   const tuName = tempatUsaha.find(t => t.id === tempatUsahaId)?.nama || '-';
@@ -218,19 +209,17 @@ export default function HargaRutinPage() {
   if (showForm) {
     return (
       <div className="space-y-4 max-w-lg mx-auto">
-        {/* Header form */}
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold">{editingId ? 'Edit Harga Rutin' : 'Tambah Harga Rutin'}</h1>
           <Button variant="ghost" size="sm" onClick={() => { setShowForm(false); resetForm(); }}>Batal</Button>
         </div>
 
-        {/* Step indicator */}
         <div className="flex items-center gap-2">
           <span className={cn('px-3 py-1 rounded-full text-xs font-medium transition-colors', step === 1 ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}>1. Info Dasar</span>
           <span className={cn('px-3 py-1 rounded-full text-xs font-medium transition-colors', step === 2 ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}>2. Data Harga</span>
         </div>
 
-        {/* ===== Step 1: Info Dasar ===== */}
+        {/* Step 1 */}
         {step === 1 && (
           <Card>
             <CardContent className="p-4 space-y-4">
@@ -264,12 +253,11 @@ export default function HargaRutinPage() {
           </Card>
         )}
 
-        {/* ===== Step 2: Data Harga ===== */}
+        {/* Step 2 */}
         {step === 2 && (
           <>
             <Card>
               <CardContent className="p-4 space-y-4">
-                {/* Ringkasan step 1 */}
                 <p className="text-xs text-muted-foreground border-b pb-2">
                   {namaEnumerator} • {tanggal ? format(tanggal, 'PPP', { locale: localeId }) : ''} • {pasarName}
                 </p>
@@ -286,29 +274,42 @@ export default function HargaRutinPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Kelas Komoditas</Label>
-                  <Select value={kelasKomoditas} onValueChange={v => { setKelasKomoditas(v as KelasKomoditas); setTempatUsahaId(''); }}>
-                    <SelectTrigger><SelectValue placeholder="Pilih kelas" /></SelectTrigger>
+                  <Select
+                    value={kelasKomoditas}
+                    onValueChange={v => { setKelasKomoditas(v as KelasKomoditas); setTempatUsahaId(''); }}
+                    disabled={!komoditasId}
+                  >
+                    <SelectTrigger><SelectValue placeholder={komoditasId ? 'Pilih kelas' : 'Pilih komoditas dulu'} /></SelectTrigger>
                     <SelectContent>
-                      {/* Kelas yang sudah diinput ditandai disabled */}
-                      {kelasOptions.map(k => (
-                        <SelectItem key={k} value={k} disabled={usedKelas.has(k)}>
-                          {k.charAt(0).toUpperCase() + k.slice(1)} {usedKelas.has(k) ? '(sudah diinput)' : ''}
-                        </SelectItem>
-                      ))}
+                      {kelasOptions.map(k => {
+                        const tuCount = Object.values(kelasMap).filter(kls => kls === k).length;
+                        return (
+                          <SelectItem key={k} value={k} disabled={usedKelas.has(k)}>
+                            {k.charAt(0).toUpperCase() + k.slice(1)} ({tuCount} TU) {usedKelas.has(k) ? '— sudah diinput' : ''}
+                          </SelectItem>
+                        );
+                      })}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Tempat Usaha</Label>
-                  <Select value={tempatUsahaId} onValueChange={setTempatUsahaId}>
-                    <SelectTrigger><SelectValue placeholder="Pilih tempat usaha" /></SelectTrigger>
+                  <Select
+                    value={tempatUsahaId}
+                    onValueChange={setTempatUsahaId}
+                    disabled={!kelasKomoditas}
+                  >
+                    <SelectTrigger><SelectValue placeholder={kelasKomoditas ? 'Pilih tempat usaha' : 'Pilih kelas dulu'} /></SelectTrigger>
                     <SelectContent>
                       {tuFiltered.map(t => <SelectItem key={t.id} value={t.id}>{t.nama}</SelectItem>)}
-                      {tuFiltered.length === 0 && <SelectItem value="_none" disabled>Tidak ada data</SelectItem>}
+                      {tuFiltered.length === 0 && <SelectItem value="_none" disabled>Tidak ada TU kelas {kelasKomoditas}</SelectItem>}
                     </SelectContent>
                   </Select>
+                  {kelasKomoditas && tuFiltered.length === 0 && (
+                    <p className="text-xs text-warning">Tidak ada tempat usaha yang tergolong kelas {kelasKomoditas} untuk komoditas ini di pasar yang dipilih.</p>
+                  )}
                 </div>
-                {/* Input harga dan satuan berat */}
+                {/* Input harga dan satuan */}
                 <div className="space-y-2">
                   <Label>Harga (Rp)</Label>
                   <Input type="number" value={harga || ''} onChange={e => setHarga(parseFloat(e.target.value) || 0)} placeholder="0" />
@@ -330,7 +331,7 @@ export default function HargaRutinPage() {
                     </Select>
                   </div>
                 </div>
-                {/* Hasil konversi otomatis — harga per satuan dasar komoditas */}
+                {/* Konversi otomatis */}
                 {harga > 0 && jumlahInput > 0 && (
                   <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-1">
                     <p className="text-xs text-muted-foreground">Harga terstandarisasi per {satuanDasar}:</p>
@@ -349,7 +350,7 @@ export default function HargaRutinPage() {
               </CardContent>
             </Card>
 
-            {/* Entry hari ini untuk komoditas yang sama */}
+            {/* Entry hari ini */}
             {sameDayEntries.length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-xs font-medium text-muted-foreground">Data hari ini — {komoditasName}</h3>
@@ -358,13 +359,11 @@ export default function HargaRutinPage() {
                     <CardContent className="p-3">
                       <div className="flex items-center justify-between">
                         <div>
-                          {/* Badge kelas — warna sesuai design system */}
                           <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(entry.kelas_komoditas))}>
                             {entry.kelas_komoditas}
                           </Badge>
                           <p className="text-sm mt-1 font-medium">Rp {entry.harga.toLocaleString('id-ID')}</p>
                         </div>
-                        {/* Badge status */}
                         <Badge variant="outline" className={cn('text-xs', getStatusStyle(entry.status))}>
                           {entry.status === 'finalisasi' ? 'Final' : 'Proses'}
                         </Badge>
@@ -377,7 +376,7 @@ export default function HargaRutinPage() {
           </>
         )}
 
-        {/* ===== Dialog Review Sebelum Finalisasi ===== */}
+        {/* Dialog Review */}
         <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
           <DialogContent>
             <DialogHeader><DialogTitle>Review Data</DialogTitle></DialogHeader>
@@ -406,7 +405,6 @@ export default function HargaRutinPage() {
   /* ===== Render: Daftar Harga Rutin ===== */
   return (
     <div className="space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between gap-3">
         <h1 className="text-xl md:text-2xl font-bold">Harga Rutin</h1>
         <div className="flex items-center gap-2">
@@ -445,7 +443,7 @@ export default function HargaRutinPage() {
         </Button>
       </div>
 
-      {/* Daftar kartu harga rutin */}
+      {/* Daftar */}
       <div className="space-y-2">
         {filtered.map(h => {
           const kom = komoditas.find(k => k.id === h.komoditas_id);
@@ -458,7 +456,6 @@ export default function HargaRutinPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-semibold text-sm">{kom?.nama || '-'}</h3>
-                      {/* Badge kelas — warna konsisten */}
                       <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(h.kelas_komoditas))}>
                         {h.kelas_komoditas}
                       </Badge>
@@ -469,11 +466,9 @@ export default function HargaRutinPage() {
                     <p className="text-sm font-bold mt-1 text-accent">Rp {h.harga.toLocaleString('id-ID')}/{kom?.satuan_dasar || ''}</p>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    {/* Badge status — hijau final, kuning proses */}
                     <Badge variant="outline" className={cn('text-xs', getStatusStyle(h.status))}>
                       {isFinal ? 'Final' : 'Proses'}
                     </Badge>
-                    {/* Aksi edit & hapus — hanya untuk status "dalam_proses" */}
                     {!isFinal && (
                       <>
                         <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(h)}>
@@ -499,7 +494,7 @@ export default function HargaRutinPage() {
         {filtered.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">Tidak ada data.</p>}
       </div>
 
-      {/* Legenda indikator */}
+      {/* Legenda */}
       <Card>
         <CardContent className="p-3">
           <div className="flex flex-wrap gap-3 text-xs">
