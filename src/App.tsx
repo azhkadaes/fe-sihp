@@ -15,6 +15,7 @@ import TempatUsahaPage from "@/pages/TempatUsahaPage";
 import HargaRutinPage from "@/pages/HargaRutinPage";
 import HargaPelaporanPage from "@/pages/HargaPelaporanPage";
 import NotFound from "@/pages/NotFound";
+import LandingPage from "@/pages/LandingPage";
 
 const queryClient = new QueryClient();
 
@@ -30,10 +31,18 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/** Landing page: redirect ke dashboard jika sudah login */
+function LandingRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated } = useAuth();
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
 const AppRoutes = () => (
   <Routes>
+    <Route path="/" element={<LandingRoute><LandingPage /></LandingRoute>} />
     <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
-    <Route path="/" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+    <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
       <Route index element={<Navigate to="/dashboard" replace />} />
       <Route path="dashboard" element={<DashboardPage />} />
       <Route path="pasar" element={<PasarPage />} />
@@ -41,6 +50,25 @@ const AppRoutes = () => (
       <Route path="tempat-usaha" element={<TempatUsahaPage />} />
       <Route path="harga-rutin" element={<HargaRutinPage />} />
       <Route path="harga-pelaporan" element={<HargaPelaporanPage />} />
+    </Route>
+    {/* Keep old routes working */}
+    <Route path="/dashboard" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<DashboardPage />} />
+    </Route>
+    <Route path="/pasar" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<PasarPage />} />
+    </Route>
+    <Route path="/komoditas" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<KomoditasPage />} />
+    </Route>
+    <Route path="/tempat-usaha" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<TempatUsahaPage />} />
+    </Route>
+    <Route path="/harga-rutin" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<HargaRutinPage />} />
+    </Route>
+    <Route path="/harga-pelaporan" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+      <Route index element={<HargaPelaporanPage />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>
