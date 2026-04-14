@@ -18,10 +18,6 @@ export const SATUAN_DASAR_OPTIONS: { value: SatuanDasar; label: string }[] = [
   { value: 'ml', label: 'Mililiter (mL)' },
 ];
 
-/**
- * Tabel konversi satuan ke satuan dasar (kg atau liter).
- * Contoh: 1 ons = 0.1 kg, 1 ton = 1000 kg, 1 ml = 0.001 liter.
- */
 export const KONVERSI_SATUAN: Record<SatuanDasar, { base: 'kg' | 'liter'; factor: number }> = {
   kg:    { base: 'kg',    factor: 1 },
   gram:  { base: 'kg',    factor: 0.001 },
@@ -31,14 +27,6 @@ export const KONVERSI_SATUAN: Record<SatuanDasar, { base: 'kg' | 'liter'; factor
   ml:    { base: 'liter', factor: 0.001 },
 };
 
-/**
- * Menghitung harga terstandarisasi per satuan dasar komoditas.
- * @param hargaInput - Harga yang diinput pengguna
- * @param jumlahInput - Jumlah/berat yang diinput
- * @param satuanInput - Satuan berat input pengguna
- * @param satuanDasar - Satuan dasar komoditas (target konversi)
- * @returns Harga per satuan dasar, dibulatkan
- */
 export function hitungHargaStandar(
   hargaInput: number,
   jumlahInput: number,
@@ -48,9 +36,7 @@ export function hitungHargaStandar(
   if (jumlahInput <= 0) return 0;
   const konversiInput = KONVERSI_SATUAN[satuanInput];
   const konversiDasar = KONVERSI_SATUAN[satuanDasar];
-  // Konversi jumlah input ke satuan dasar komoditas
   const jumlahDalamSatuanDasar = (jumlahInput * konversiInput.factor) / konversiDasar.factor;
-  // Harga per satuan dasar
   return Math.round(hargaInput / jumlahDalamSatuanDasar);
 }
 
@@ -58,7 +44,7 @@ export interface Komoditas {
   id: string;
   nama: string;
   satuan_dasar: SatuanDasar;
-  gambar: string; // base64 data URL
+  gambar: string;
 }
 
 export interface TempatUsaha {
@@ -72,6 +58,35 @@ export interface TempatUsaha {
   pasar_id: string;
 }
 
+/** Opsi pola distribusi komoditas */
+export const POLA_DISTRIBUSI_OPTIONS = [
+  { value: 'pembelian_produsen', label: 'Pembelian dari produsen' },
+  { value: 'pembelian_pasar', label: 'Pembelian di pasar' },
+  { value: 'pemesanan_produsen', label: 'Pemesanan dari produsen' },
+  { value: 'pemesanan_supplier', label: 'Pemesanan dari supplier' },
+  { value: 'rutin_produsen', label: 'Rutin dikirim produsen' },
+  { value: 'rutin_supplier', label: 'Rutin dikirim supplier' },
+  { value: 'produsen_pedagang', label: 'Saya adalah produsen sekaligus pedagang' },
+  { value: 'lainnya', label: 'Lainnya' },
+];
+
+/** Opsi satuan periode waktu */
+export type PeriodeUnit = 'hari' | 'minggu' | '2minggu' | 'bulan';
+export const PERIODE_UNIT_OPTIONS: { value: PeriodeUnit; label: string }[] = [
+  { value: 'hari', label: 'Hari' },
+  { value: 'minggu', label: 'Minggu' },
+  { value: '2minggu', label: '2 Minggu' },
+  { value: 'bulan', label: 'Bulan' },
+];
+
+/** Faktor konversi periode ke hari (untuk standardisasi) */
+export const PERIODE_TO_DAYS: Record<PeriodeUnit, number> = {
+  hari: 1,
+  minggu: 7,
+  '2minggu': 14,
+  bulan: 30,
+};
+
 export interface KomoditasDijual {
   id: string;
   tempat_usaha_id: string;
@@ -80,9 +95,14 @@ export interface KomoditasDijual {
   harga_mahal: number;
   satuan_stok: string;
   nilai_stok: number;
+  /** Jumlah periode (misal: 2) */
   nilai_periode: number;
+  /** Satuan periode (misal: 'minggu' → berarti setiap 2 minggu) */
+  periode_unit: PeriodeUnit;
   lokasi_supplier: string;
-  pola_distribusi: number;
+  /** Kode pola distribusi dari POLA_DISTRIBUSI_OPTIONS */
+  pola_distribusi: string;
+  /** Stok per hari = nilai_stok / (nilai_periode * PERIODE_TO_DAYS[periode_unit]) */
   standardized_stock_periode: number;
   is_active: boolean;
 }
@@ -97,13 +117,9 @@ export interface HargaRutin {
   komoditas_id: string;
   kelas_komoditas: KelasKomoditas;
   tempat_usaha_id: string;
-  /** Harga asli yang diinput pengguna */
   harga_input: number;
-  /** Jumlah/berat yang diinput pengguna */
   jumlah_input: number;
-  /** Satuan berat yang diinput pengguna */
   satuan_input: SatuanDasar;
-  /** Harga terstandarisasi per satuan dasar komoditas (dihitung otomatis) */
   harga: number;
   status: 'dalam_proses' | 'finalisasi';
 }
