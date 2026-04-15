@@ -1,513 +1,1256 @@
-/**
- * HargaRutinPage — Halaman CRUD Harga Rutin.
- * Multi-step form: Step 1 (info dasar) → Step 2 (data harga) → Review → Finalisasi.
- *
- * Perubahan penting:
- * - Dropdown tempat usaha difilter berdasarkan kelas komoditas yang dipilih
- * - Kelas dihitung otomatis dari distribusi normal harga rata-rata
- */
-import { useState, useMemo, useRef } from 'react';
-import { useData } from '@/contexts/DataContext';
-import type { HargaRutin, KelasKomoditas, SatuanDasar } from '@/types';
-import { SATUAN_DASAR_OPTIONS, KONVERSI_SATUAN, hitungHargaStandar } from '@/types';
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Badge } from '@/components/ui/badge';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { format } from 'date-fns';
-import { id as localeId } from 'date-fns/locale';
-import { CalendarIcon, Plus, Pencil, Trash2, Search, Download, Upload } from 'lucide-react';
-import { toast } from 'sonner';
-import { cn } from '@/lib/utils';
-import { exportToCSV, parseCSV } from '@/lib/csv-utils';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useData } from "@/contexts/DataContext";
+import type { HargaRutin, KelasKomoditas, SatuanDasar } from "@/types";
+import {
+  SATUAN_DASAR_OPTIONS,
+  KONVERSI_SATUAN,
+  hitungHargaStandar,
+} from "@/types";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { id as localeId } from "date-fns/locale";
+import {
+  CalendarIcon,
+  Plus,
+  Pencil,
+  Eye,
+  Trash2,
+  ChevronDown,
+} from "lucide-react";
+import { toast } from "sonner";
 
-const kelasOptions: KelasKomoditas[] = ['besar', 'menengah', 'kecil'];
+const kelasOptions: KelasKomoditas[] = ["besar", "menengah", "kecil"];
 
-const getKelasStyle = (kelas: string) => {
-  switch (kelas) {
-    case 'besar': return 'border-kelas-besar text-kelas-besar bg-kelas-besar/10';
-    case 'menengah': return 'border-kelas-menengah text-kelas-menengah bg-kelas-menengah/10';
-    case 'kecil': return 'border-kelas-kecil text-kelas-kecil bg-kelas-kecil/10';
-    default: return '';
+type ReportSample = {
+  kelas: KelasKomoditas;
+  tempatUsahaId: string;
+  hargaInput: number;
+  jumlahInput: number;
+  satuanInput: SatuanDasar;
+};
+
+type ReportItem = {
+  komoditasId: string;
+  samples: ReportSample[];
+};
+
+type ReportMeta = {
+  enumerator: string;
+  pasarId: string;
+  tanggal: Date | undefined;
+  signatureData: string;
+};
+
+type ReportGroup = {
+  key: string;
+  tanggal: string;
+  pasarId: string;
+  enumerator: string;
+  status: "draft" | "final";
+  entries: HargaRutin[];
+};
+
+const getStatusStyle = (status: "draft" | "final") => {
+  switch (status) {
+    case "final":
+      return "bg-success/15 text-success border-success/20";
+    case "draft":
+    default:
+      return "bg-warning/15 text-warning border-warning/20";
   }
 };
 
-const getStatusStyle = (status: string) => {
-  switch (status) {
-    case 'finalisasi': return 'bg-success/15 text-success border-success/20';
-    case 'dalam_proses': return 'bg-warning/15 text-warning border-warning/20';
-    default: return '';
+const getKelasStyle = (kelas: KelasKomoditas) => {
+  switch (kelas) {
+    case "besar":
+      return "border-kelas-besar text-kelas-besar bg-kelas-besar/10";
+    case "menengah":
+      return "border-kelas-menengah text-kelas-menengah bg-kelas-menengah/10";
+    case "kecil":
+    default:
+      return "border-kelas-kecil text-kelas-kecil bg-kelas-kecil/10";
   }
 };
 
 export default function HargaRutinPage() {
-  const { hargaRutin, addHargaRutin, updateHargaRutin, deleteHargaRutin, pasar, komoditas, tempatUsaha, komoditasDijual, getKelasForKomoditasInPasar } = useData();
+  const {
+    hargaRutin,
+    addHargaRutin,
+    updateHargaRutin,
+    deleteHargaRutin,
+    pasar,
+    komoditas,
+    tempatUsaha,
+    komoditasDijual,
+    hargaPelaporan,
+    getKelasForKomoditasInPasar,
+  } = useData();
 
-  /* ===== State form ===== */
-  const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [step, setStep] = useState(1);
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [filterPasar, setFilterPasar] = useState<string>('all');
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [view, setView] = useState<
+    "dashboard" | "setup" | "input" | "review" | "detail"
+  >("dashboard");
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [meta, setMeta] = useState<ReportMeta>({
+    enumerator: "",
+    pasarId: "",
+    tanggal: undefined,
+    signatureData: "",
+  });
+  const [items, setItems] = useState<ReportItem[]>([]);
+  const [selectedKomoditas, setSelectedKomoditas] = useState<string>("");
+  const [filterPasar, setFilterPasar] = useState<string>("all");
+  const [filterTanggal, setFilterTanggal] = useState<Date | undefined>(
+    undefined,
+  );
+  const [finalizeOpen, setFinalizeOpen] = useState(false);
 
-  const [namaEnumerator, setNamaEnumerator] = useState('');
-  const [tanggal, setTanggal] = useState<Date | undefined>(undefined);
-  const [pasarId, setPasarId] = useState('');
-  const [komoditasId, setKomoditasId] = useState('');
-  const [kelasKomoditas, setKelasKomoditas] = useState<KelasKomoditas | ''>('');
-  const [tempatUsahaId, setTempatUsahaId] = useState('');
-  const [harga, setHarga] = useState<number>(0);
-  const [jumlahInput, setJumlahInput] = useState<number>(1);
-  const [satuanInput, setSatuanInput] = useState<SatuanDasar>('kg');
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
 
-  const selectedKomoditas = komoditas.find(k => k.id === komoditasId);
-  const satuanDasar = selectedKomoditas?.satuan_dasar || 'kg';
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    canvas.width = parent.clientWidth;
+    canvas.height = 120;
+  }, [view]);
 
-  const compatibleSatuanOptions = useMemo(() => {
-    const baseType = KONVERSI_SATUAN[satuanDasar]?.base || 'kg';
-    return SATUAN_DASAR_OPTIONS.filter(s => KONVERSI_SATUAN[s.value].base === baseType);
-  }, [satuanDasar]);
-
-  const hargaStandar = useMemo(() => {
-    if (harga <= 0 || jumlahInput <= 0) return 0;
-    return hitungHargaStandar(harga, jumlahInput, satuanInput, satuanDasar);
-  }, [harga, jumlahInput, satuanInput, satuanDasar]);
-
-  const tanggalStr = tanggal ? format(tanggal, 'yyyy-MM-dd') : '';
-
-  /* ===== Kelas komoditas untuk pasar+komoditas terpilih ===== */
-  const kelasMap = useMemo(() => {
-    if (!pasarId || !komoditasId) return {};
-    return getKelasForKomoditasInPasar(pasarId, komoditasId);
-  }, [pasarId, komoditasId, getKelasForKomoditasInPasar]);
-
-  /* ===== Filter komoditas berdasarkan pasar ===== */
-  const tuForPasar = tempatUsaha.filter(t => t.pasar_id === pasarId);
-  const kdForPasar = komoditasDijual.filter(kd => tuForPasar.some(t => t.id === kd.tempat_usaha_id));
-  const komoditasForPasar = komoditas.filter(k => kdForPasar.some(kd => kd.komoditas_id === k.id));
-
-  /**
-   * Filter tempat usaha berdasarkan kelas yang dipilih.
-   * Hanya tampilkan TU yang tergolong dalam kelas tersebut untuk komoditas ini.
-   */
-  const tuFiltered = useMemo(() => {
-    if (!komoditasId || !kelasKomoditas || !pasarId) return [];
-    return tempatUsaha.filter(t => {
-      if (t.pasar_id !== pasarId) return false;
-      // Cek apakah TU menjual komoditas ini
-      const hasKomoditas = komoditasDijual.some(kd => kd.tempat_usaha_id === t.id && kd.komoditas_id === komoditasId);
-      if (!hasKomoditas) return false;
-      // Cek apakah kelas TU sesuai dengan kelas yang dipilih
-      return kelasMap[t.id] === kelasKomoditas;
+  const reportGroups = useMemo<ReportGroup[]>(() => {
+    const map = new Map<string, HargaRutin[]>();
+    hargaRutin.forEach((entry) => {
+      const key = `${entry.tanggal}__${entry.pasar_id}__${entry.nama_enumerator}`;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(entry);
     });
-  }, [pasarId, komoditasId, kelasKomoditas, tempatUsaha, komoditasDijual, kelasMap]);
 
-  /** Kelas yang sudah diinput hari ini */
-  const usedKelas = useMemo(() => {
-    if (!tanggalStr || !pasarId || !komoditasId) return new Set<string>();
-    return new Set(
-      hargaRutin
-        .filter(h => h.tanggal === tanggalStr && h.pasar_id === pasarId && h.komoditas_id === komoditasId && h.id !== editingId)
-        .map(h => h.kelas_komoditas)
+    return Array.from(map.entries())
+      .map(([key, entries]) => {
+        const [tanggal, pasarId, enumerator] = key.split("__");
+        const status = entries.every((e) => e.status === "finalisasi")
+          ? "final"
+          : "draft";
+        return { key, tanggal, pasarId, enumerator, status, entries };
+      })
+      .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+  }, [hargaRutin]);
+
+  const filteredGroups = useMemo(() => {
+    return reportGroups.filter((group) => {
+      if (filterPasar !== "all" && group.pasarId !== filterPasar) return false;
+      if (filterTanggal) {
+        const t = format(filterTanggal, "yyyy-MM-dd");
+        if (group.tanggal !== t) return false;
+      }
+      return true;
+    });
+  }, [reportGroups, filterPasar, filterTanggal]);
+
+  const latestByPasarKomoditas = useMemo(() => {
+    return hargaPelaporan.reduce<
+      Record<string, (typeof hargaPelaporan)[number]>
+    >((acc, item) => {
+      const key = `${item.pasar_id}-${item.komoditas_id}`;
+      if (!acc[key] || item.tanggal > acc[key].tanggal) acc[key] = item;
+      return acc;
+    }, {});
+  }, [hargaPelaporan]);
+
+  const currentGroupStatus = useMemo(() => {
+    if (!activeKey) return "draft" as const;
+    const group = reportGroups.find((g) => g.key === activeKey);
+    return group?.status ?? "draft";
+  }, [activeKey, reportGroups]);
+
+  const resetReportState = () => {
+    setMeta({
+      enumerator: "",
+      pasarId: "",
+      tanggal: undefined,
+      signatureData: "",
+    });
+    setItems([]);
+    setSelectedKomoditas("");
+    setActiveKey(null);
+  };
+
+  const createEmptySamples = (komoditasId: string): ReportSample[] => {
+    const satuanDefault =
+      komoditas.find((k) => k.id === komoditasId)?.satuan_dasar ?? "kg";
+    return kelasOptions.map((kelas) => ({
+      kelas,
+      tempatUsahaId: "",
+      hargaInput: 0,
+      jumlahInput: 1,
+      satuanInput: satuanDefault,
+    }));
+  };
+
+  const buildItemsFromEntries = (entries: HargaRutin[]): ReportItem[] => {
+    const grouped = new Map<string, HargaRutin[]>();
+    entries.forEach((e) => {
+      if (!grouped.has(e.komoditas_id)) grouped.set(e.komoditas_id, []);
+      grouped.get(e.komoditas_id)!.push(e);
+    });
+
+    return Array.from(grouped.entries()).map(([komoditasId, komEntries]) => {
+      const samples = kelasOptions.map((kelas) => {
+        const match = komEntries.find((e) => e.kelas_komoditas === kelas);
+        return {
+          kelas,
+          tempatUsahaId: match?.tempat_usaha_id ?? "",
+          hargaInput: match?.harga_input ?? 0,
+          jumlahInput: match?.jumlah_input ?? 1,
+          satuanInput:
+            match?.satuan_input ??
+            komoditas.find((k) => k.id === komoditasId)?.satuan_dasar ??
+            "kg",
+        } as ReportSample;
+      });
+      return { komoditasId, samples };
+    });
+  };
+
+  const openSetup = () => {
+    resetReportState();
+    setView("setup");
+  };
+
+  const openEdit = (group: ReportGroup) => {
+    setActiveKey(group.key);
+    setMeta({
+      enumerator: group.enumerator,
+      pasarId: group.pasarId,
+      tanggal: new Date(group.tanggal),
+      signatureData: "",
+    });
+    setItems(buildItemsFromEntries(group.entries));
+    setView("input");
+  };
+
+  const openDetail = (group: ReportGroup) => {
+    setActiveKey(group.key);
+    setMeta({
+      enumerator: group.enumerator,
+      pasarId: group.pasarId,
+      tanggal: new Date(group.tanggal),
+      signatureData: "",
+    });
+    setItems(buildItemsFromEntries(group.entries));
+    setView("detail");
+  };
+
+  const handleSignatureClear = () => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    setMeta((prev) => ({ ...prev, signatureData: "" }));
+  };
+
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#2a4e85";
+    ctx.beginPath();
+    ctx.moveTo(event.nativeEvent.offsetX, event.nativeEvent.offsetY);
+    setIsDrawing(true);
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !canvasRef.current) return;
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    ctx.lineTo(event.nativeEvent.offsetX, event.nativeEvent.offsetY);
+    ctx.stroke();
+  };
+
+  const handlePointerUp = () => {
+    if (!canvasRef.current) return;
+    setIsDrawing(false);
+    setMeta((prev) => ({
+      ...prev,
+      signatureData: canvasRef.current?.toDataURL() ?? "",
+    }));
+  };
+
+  const handleSetupNext = () => {
+    if (!meta.enumerator.trim() || !meta.pasarId || !meta.tanggal) {
+      toast.error("Lengkapi semua field");
+      return;
+    }
+    setView("input");
+  };
+
+  const handleAddKomoditas = () => {
+    if (!selectedKomoditas) return;
+    if (items.some((item) => item.komoditasId === selectedKomoditas)) {
+      toast.error("Komoditas sudah ditambahkan");
+      return;
+    }
+    setItems((prev) => [
+      ...prev,
+      {
+        komoditasId: selectedKomoditas,
+        samples: createEmptySamples(selectedKomoditas),
+      },
+    ]);
+    setSelectedKomoditas("");
+  };
+
+  const handleRemoveKomoditas = (komoditasId: string) => {
+    setItems((prev) => prev.filter((item) => item.komoditasId !== komoditasId));
+  };
+
+  const updateSample = (
+    komoditasId: string,
+    kelas: KelasKomoditas,
+    updater: Partial<ReportSample>,
+  ) => {
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.komoditasId !== komoditasId) return item;
+        return {
+          ...item,
+          samples: item.samples.map((sample) =>
+            sample.kelas === kelas ? { ...sample, ...updater } : sample,
+          ),
+        };
+      }),
     );
-  }, [hargaRutin, tanggalStr, pasarId, komoditasId, editingId]);
-
-  const sameDayEntries = useMemo(() => {
-    if (!tanggalStr || !pasarId || !komoditasId) return [];
-    return hargaRutin.filter(h => h.tanggal === tanggalStr && h.pasar_id === pasarId && h.komoditas_id === komoditasId);
-  }, [hargaRutin, tanggalStr, pasarId, komoditasId]);
-
-  /* ===== Filter daftar utama ===== */
-  const filtered = hargaRutin
-    .filter(h => {
-      const kom = komoditas.find(k => k.id === h.komoditas_id);
-      const pas = pasar.find(p => p.id === h.pasar_id);
-      const q = search.toLowerCase();
-      return h.nama_enumerator.toLowerCase().includes(q) || (kom?.nama || '').toLowerCase().includes(q) || (pas?.nama || '').toLowerCase().includes(q);
-    })
-    .filter(h => filterStatus === 'all' || h.status === filterStatus)
-    .filter(h => filterPasar === 'all' || h.pasar_id === filterPasar)
-    .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
-
-  /* ===== Handler form ===== */
-  const resetForm = () => {
-    setStep(1); setNamaEnumerator(''); setTanggal(undefined); setPasarId('');
-    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0);
-    setJumlahInput(1); setSatuanInput('kg'); setEditingId(null);
   };
 
-  const openForm = () => { resetForm(); setShowForm(true); };
-
-  const openEdit = (h: HargaRutin) => {
-    if (h.status === 'finalisasi') return;
-    setEditingId(h.id); setNamaEnumerator(h.nama_enumerator);
-    setTanggal(new Date(h.tanggal)); setPasarId(h.pasar_id);
-    setKomoditasId(h.komoditas_id); setKelasKomoditas(h.kelas_komoditas);
-    setTempatUsahaId(h.tempat_usaha_id); setHarga(h.harga_input);
-    setJumlahInput(h.jumlah_input); setSatuanInput(h.satuan_input);
-    setStep(2); setShowForm(true);
+  const getTempatUsahaOptions = (
+    pasarId: string,
+    komoditasId: string,
+    kelas: KelasKomoditas,
+  ) => {
+    if (!pasarId) return [];
+    const kelasMap = getKelasForKomoditasInPasar(pasarId, komoditasId);
+    return tempatUsaha.filter((t) => {
+      if (t.pasar_id !== pasarId || !t.is_active) return false;
+      const hasKom = komoditasDijual.some(
+        (kd) => kd.tempat_usaha_id === t.id && kd.komoditas_id === komoditasId,
+      );
+      if (!hasKom) return false;
+      return kelasMap[t.id] === kelas;
+    });
   };
 
-  const handleStep1Next = () => {
-    if (!namaEnumerator.trim() || !tanggal || !pasarId) { toast.error('Lengkapi semua field'); return; }
-    setStep(2);
+  const validateReport = (strict: boolean) => {
+    if (!meta.enumerator.trim() || !meta.pasarId || !meta.tanggal) {
+      toast.error("Lengkapi info pendataan terlebih dahulu");
+      return false;
+    }
+    if (items.length === 0) {
+      toast.error("Tambahkan minimal satu komoditas");
+      return false;
+    }
+    for (const item of items) {
+      for (const sample of item.samples) {
+        if (strict) {
+          if (
+            !sample.tempatUsahaId ||
+            sample.hargaInput <= 0 ||
+            sample.jumlahInput <= 0
+          ) {
+            toast.error("Semua sampel wajib terisi untuk finalisasi");
+            return false;
+          }
+        }
+      }
+    }
+    return true;
   };
 
-  const handleReview = () => {
-    if (!komoditasId || !kelasKomoditas || !tempatUsahaId || harga <= 0 || jumlahInput <= 0) { toast.error('Lengkapi semua field'); return; }
-    if (usedKelas.has(kelasKomoditas) && !editingId) { toast.error(`Kelas ${kelasKomoditas} sudah diinput untuk komoditas ini hari ini`); return; }
-    setReviewOpen(true);
+  const getReportKeyForCurrent = () => {
+    if (!meta.tanggal || !meta.pasarId || !meta.enumerator) return null;
+    return `${format(meta.tanggal, "yyyy-MM-dd")}__${meta.pasarId}__${meta.enumerator}`;
+  };
+
+  const upsertReport = (status: "dalam_proses" | "finalisasi") => {
+    const key = activeKey ?? getReportKeyForCurrent();
+    if (!key || !meta.tanggal) return;
+
+    const existing = reportGroups.find((g) => g.key === key);
+    if (existing) {
+      existing.entries.forEach((entry) => deleteHargaRutin(entry.id));
+    }
+
+    items.forEach((item) => {
+      const kom = komoditas.find((k) => k.id === item.komoditasId);
+      const satuanDasar = kom?.satuan_dasar ?? "kg";
+      item.samples.forEach((sample) => {
+        const hargaStandar = hitungHargaStandar(
+          sample.hargaInput,
+          sample.jumlahInput,
+          sample.satuanInput,
+          satuanDasar,
+        );
+        const payload = {
+          nama_enumerator: meta.enumerator,
+          tanggal: format(meta.tanggal!, "yyyy-MM-dd"),
+          pasar_id: meta.pasarId,
+          komoditas_id: item.komoditasId,
+          kelas_komoditas: sample.kelas,
+          tempat_usaha_id: sample.tempatUsahaId,
+          harga_input: sample.hargaInput,
+          jumlah_input: sample.jumlahInput,
+          satuan_input: sample.satuanInput,
+          harga: hargaStandar,
+          status,
+        } as const;
+        addHargaRutin(payload);
+      });
+    });
+  };
+
+  const handleSaveDraft = () => {
+    if (!validateReport(false)) return;
+    upsertReport("dalam_proses");
+    toast.success("Draft disimpan");
+    resetReportState();
+    setView("dashboard");
   };
 
   const handleFinalize = () => {
-    const data = {
-      nama_enumerator: namaEnumerator, tanggal: tanggalStr, pasar_id: pasarId,
-      komoditas_id: komoditasId, kelas_komoditas: kelasKomoditas as KelasKomoditas,
-      tempat_usaha_id: tempatUsahaId,
-      harga_input: harga, jumlah_input: jumlahInput, satuan_input: satuanInput,
-      harga: hargaStandar,
-      status: 'finalisasi' as const,
-    };
-    if (editingId) { updateHargaRutin(editingId, data); toast.success('Diperbarui & difinalisasi'); }
-    else { addHargaRutin(data); toast.success('Data difinalisasi'); }
-    setReviewOpen(false);
-    setKomoditasId(''); setKelasKomoditas(''); setTempatUsahaId(''); setHarga(0);
-    setJumlahInput(1); setSatuanInput('kg'); setEditingId(null);
+    if (!validateReport(true)) return;
+    upsertReport("finalisasi");
+    toast.success("Data difinalisasi");
+    setFinalizeOpen(false);
+    resetReportState();
+    setView("dashboard");
   };
 
-  /* ===== Ekspor CSV ===== */
-  const handleExport = () => {
-    const data = hargaRutin.map(h => ({
-      ...h,
-      komoditas_nama: komoditas.find(k => k.id === h.komoditas_id)?.nama || '',
-      pasar_nama: pasar.find(p => p.id === h.pasar_id)?.nama || '',
-      tempat_usaha_nama: tempatUsaha.find(t => t.id === h.tempat_usaha_id)?.nama || '',
-    }));
-    exportToCSV(data, 'harga-rutin', [
-      { key: 'tanggal', label: 'Tanggal' }, { key: 'nama_enumerator', label: 'Enumerator' },
-      { key: 'pasar_nama', label: 'Pasar' }, { key: 'komoditas_nama', label: 'Komoditas' },
-      { key: 'kelas_komoditas', label: 'Kelas' }, { key: 'tempat_usaha_nama', label: 'Tempat Usaha' },
-      { key: 'harga', label: 'Harga' }, { key: 'status', label: 'Status' },
-    ]);
-    toast.success('Data diekspor');
+  const handleDeleteGroup = (group: ReportGroup) => {
+    group.entries.forEach((entry) => deleteHargaRutin(entry.id));
+    toast.success("Data dihapus");
   };
 
-  const pasarName = pasar.find(p => p.id === pasarId)?.nama || '-';
-  const komoditasName = komoditas.find(k => k.id === komoditasId)?.nama || '-';
-  const tuName = tempatUsaha.find(t => t.id === tempatUsahaId)?.nama || '-';
+  const renderInfoRow = (label: string, value: string) => (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{value}</span>
+    </div>
+  );
 
-  /* ===== Render: Form Multi-step ===== */
-  if (showForm) {
+  if (view === "dashboard") {
     return (
-      <div className="space-y-4 max-w-lg mx-auto">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold">{editingId ? 'Edit Harga Rutin' : 'Tambah Harga Rutin'}</h1>
-          <Button variant="ghost" size="sm" onClick={() => { setShowForm(false); resetForm(); }}>Batal</Button>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold">Pemantauan Harga Pangan</h1>
+            <p className="text-sm text-muted-foreground">
+              Kelola draft dan finalisasi pendataan harga.
+            </p>
+          </div>
+          <Button
+            className="bg-primary text-primary-foreground"
+            onClick={openSetup}
+          >
+            <Plus className="h-4 w-4 mr-1" /> Tambah Data
+          </Button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className={cn('px-3 py-1 rounded-full text-xs font-medium transition-colors', step === 1 ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}>1. Info Dasar</span>
-          <span className={cn('px-3 py-1 rounded-full text-xs font-medium transition-colors', step === 2 ? 'bg-accent text-accent-foreground' : 'bg-muted text-muted-foreground')}>2. Data Harga</span>
-        </div>
-
-        {/* Step 1 */}
-        {step === 1 && (
-          <Card>
-            <CardContent className="p-4 space-y-4">
-              <div className="space-y-2">
-                <Label>Nama Enumerator</Label>
-                <Input value={namaEnumerator} onChange={e => setNamaEnumerator(e.target.value)} placeholder="Masukkan nama" />
-              </div>
-              <div className="space-y-2">
-                <Label>Tanggal</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className={cn('w-full justify-start text-left font-normal', !tanggal && 'text-muted-foreground')}>
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {tanggal ? format(tanggal, 'PPP', { locale: localeId }) : 'Pilih tanggal'}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar mode="single" selected={tanggal} onSelect={setTanggal} initialFocus className="p-3 pointer-events-auto" />
-                  </PopoverContent>
-                </Popover>
-              </div>
-              <div className="space-y-2">
-                <Label>Pasar</Label>
-                <Select value={pasarId} onValueChange={setPasarId}>
-                  <SelectTrigger><SelectValue placeholder="Pilih pasar" /></SelectTrigger>
-                  <SelectContent>{pasar.filter(p => p.is_active).map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <Button onClick={handleStep1Next} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Lanjut</Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 2 */}
-        {step === 2 && (
-          <>
-            <Card>
-              <CardContent className="p-4 space-y-4">
-                <p className="text-xs text-muted-foreground border-b pb-2">
-                  {namaEnumerator} • {tanggal ? format(tanggal, 'PPP', { locale: localeId }) : ''} • {pasarName}
-                </p>
-                <div className="space-y-2">
-                  <Label>Komoditas</Label>
-                  <Select value={komoditasId} onValueChange={v => { setKomoditasId(v); setKelasKomoditas(''); setTempatUsahaId(''); const kom = komoditas.find(k => k.id === v); if (kom) setSatuanInput(kom.satuan_dasar); }}>
-                    <SelectTrigger><SelectValue placeholder="Pilih komoditas" /></SelectTrigger>
-                    <SelectContent>
-                      {(komoditasForPasar.length > 0 ? komoditasForPasar : komoditas).map(k => (
-                        <SelectItem key={k.id} value={k.id}>{k.nama}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Kelas Komoditas</Label>
-                  <Select
-                    value={kelasKomoditas}
-                    onValueChange={v => { setKelasKomoditas(v as KelasKomoditas); setTempatUsahaId(''); }}
-                    disabled={!komoditasId}
-                  >
-                    <SelectTrigger><SelectValue placeholder={komoditasId ? 'Pilih kelas' : 'Pilih komoditas dulu'} /></SelectTrigger>
-                    <SelectContent>
-                      {kelasOptions.map(k => {
-                        const tuCount = Object.values(kelasMap).filter(kls => kls === k).length;
-                        return (
-                          <SelectItem key={k} value={k} disabled={usedKelas.has(k)}>
-                            {k.charAt(0).toUpperCase() + k.slice(1)} ({tuCount} TU) {usedKelas.has(k) ? '— sudah diinput' : ''}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Tempat Usaha</Label>
-                  <Select
-                    value={tempatUsahaId}
-                    onValueChange={setTempatUsahaId}
-                    disabled={!kelasKomoditas}
-                  >
-                    <SelectTrigger><SelectValue placeholder={kelasKomoditas ? 'Pilih tempat usaha' : 'Pilih kelas dulu'} /></SelectTrigger>
-                    <SelectContent>
-                      {tuFiltered.map(t => <SelectItem key={t.id} value={t.id}>{t.nama}</SelectItem>)}
-                      {tuFiltered.length === 0 && <SelectItem value="_none" disabled>Tidak ada TU kelas {kelasKomoditas}</SelectItem>}
-                    </SelectContent>
-                  </Select>
-                  {kelasKomoditas && tuFiltered.length === 0 && (
-                    <p className="text-xs text-warning">Tidak ada tempat usaha yang tergolong kelas {kelasKomoditas} untuk komoditas ini di pasar yang dipilih.</p>
-                  )}
-                </div>
-                {/* Input harga dan satuan */}
-                <div className="space-y-2">
-                  <Label>Harga (Rp)</Label>
-                  <Input type="number" value={harga || ''} onChange={e => setHarga(parseFloat(e.target.value) || 0)} placeholder="0" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label>Jumlah</Label>
-                    <Input type="number" value={jumlahInput || ''} onChange={e => setJumlahInput(parseFloat(e.target.value) || 0)} placeholder="1" min={0.01} step="any" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Satuan</Label>
-                    <Select value={satuanInput} onValueChange={v => setSatuanInput(v as SatuanDasar)}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {compatibleSatuanOptions.map(s => (
-                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                {/* Konversi otomatis */}
-                {harga > 0 && jumlahInput > 0 && (
-                  <div className="rounded-lg border border-accent/30 bg-accent/5 p-3 space-y-1">
-                    <p className="text-xs text-muted-foreground">Harga terstandarisasi per {satuanDasar}:</p>
-                    <p className="text-lg font-bold text-accent">Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}</p>
-                    {satuanInput !== satuanDasar && (
-                      <p className="text-xs text-muted-foreground">
-                        Rp {harga.toLocaleString('id-ID')} / {jumlahInput} {satuanInput} → Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}
-                      </p>
+        <Card>
+          <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Pasar</Label>
+              <Select value={filterPasar} onValueChange={setFilterPasar}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Semua Pasar" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua Pasar</SelectItem>
+                  {pasar.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nama}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tanggal</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left",
+                      !filterTanggal && "text-muted-foreground",
                     )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {filterTanggal
+                      ? format(filterTanggal, "PPP", { locale: localeId })
+                      : "Semua tanggal"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={filterTanggal}
+                    onSelect={setFilterTanggal}
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid gap-4">
+          {filteredGroups.map((group) => (
+            <Card key={group.key} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4 flex flex-col lg:flex-row lg:items-center gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-lg font-semibold">
+                    {pasar.find((p) => p.id === group.pasarId)?.nama ?? "-"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    {format(new Date(group.tanggal), "PPP", {
+                      locale: localeId,
+                    })}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Enumerator: {group.enumerator}
+                  </p>
+                </div>
+                <div className="lg:ml-auto flex items-center gap-3 flex-wrap lg:flex-nowrap">
+                  <Badge
+                    variant="outline"
+                    className={cn("text-xs", getStatusStyle(group.status))}
+                  >
+                    {group.status === "final" ? "Final" : "Draft"}
+                  </Badge>
+                  <div className="flex items-center gap-2 flex-nowrap">
+                    {group.status === "draft" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEdit(group)}
+                      >
+                        <Pencil className="h-4 w-4 mr-1" /> Edit
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openDetail(group)}
+                      >
+                        <Eye className="h-4 w-4 mr-1" /> View
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-danger"
+                      onClick={() => handleDeleteGroup(group)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
-                )}
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setStep(1)} className="flex-1">Kembali</Button>
-                  <Button onClick={handleReview} className="flex-1 bg-accent text-accent-foreground hover:bg-accent/90">Lanjut</Button>
                 </div>
               </CardContent>
             </Card>
-
-            {/* Entry hari ini */}
-            {sameDayEntries.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-medium text-muted-foreground">Data hari ini — {komoditasName}</h3>
-                {sameDayEntries.map(entry => (
-                  <Card key={entry.id} className="border-accent/20">
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(entry.kelas_komoditas))}>
-                            {entry.kelas_komoditas}
-                          </Badge>
-                          <p className="text-sm mt-1 font-medium">Rp {entry.harga.toLocaleString('id-ID')}</p>
-                        </div>
-                        <Badge variant="outline" className={cn('text-xs', getStatusStyle(entry.status))}>
-                          {entry.status === 'finalisasi' ? 'Final' : 'Proses'}
-                        </Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Dialog Review */}
-        <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Review Data</DialogTitle></DialogHeader>
-            <div className="space-y-3 text-sm">
-              <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-                <span className="text-muted-foreground">Enumerator</span><span className="font-medium">{namaEnumerator}</span>
-                <span className="text-muted-foreground">Tanggal</span><span className="font-medium">{tanggal ? format(tanggal, 'PPP', { locale: localeId }) : '-'}</span>
-                <span className="text-muted-foreground">Pasar</span><span className="font-medium">{pasarName}</span>
-                <span className="text-muted-foreground">Komoditas</span><span className="font-medium">{komoditasName}</span>
-                <span className="text-muted-foreground">Kelas</span><span className="font-medium capitalize">{kelasKomoditas}</span>
-                <span className="text-muted-foreground">Tempat Usaha</span><span className="font-medium">{tuName}</span>
-                <span className="text-muted-foreground">Harga Input</span><span className="font-medium">Rp {harga.toLocaleString('id-ID')} / {jumlahInput} {satuanInput}</span>
-                <span className="text-muted-foreground">Harga Standar</span><span className="font-bold text-accent">Rp {hargaStandar.toLocaleString('id-ID')}/{satuanDasar}</span>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setReviewOpen(false)}>Kembali</Button>
-              <Button onClick={handleFinalize} className="bg-accent text-accent-foreground hover:bg-accent/90">Finalisasi</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+          ))}
+          {filteredGroups.length === 0 && (
+            <Card>
+              <CardContent className="py-12 text-center text-muted-foreground">
+                Belum ada data pendataan untuk filter tersebut.
+              </CardContent>
+            </Card>
+          )}
+        </div>
       </div>
     );
   }
 
-  /* ===== Render: Daftar Harga Rutin ===== */
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-xl md:text-2xl font-bold">Harga Rutin</h1>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleExport} className="hidden sm:flex">
-            <Download className="h-4 w-4 mr-1" /> Ekspor
+  if (view === "setup") {
+    return (
+      <div className="max-w-3xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Setup Pendataan</h1>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              resetReportState();
+              setView("dashboard");
+            }}
+          >
+            Batal
           </Button>
-          <Button onClick={openForm} size="sm" className="bg-accent text-accent-foreground hover:bg-accent/90">
-            <Plus className="h-4 w-4 mr-1" /> Tambah
+        </div>
+
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            <div className="space-y-2">
+              <Label>Pasar</Label>
+              <Select
+                value={meta.pasarId}
+                onValueChange={(value) =>
+                  setMeta((prev) => ({ ...prev, pasarId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih pasar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pasar
+                    .filter((p) => p.is_active)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.nama}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Tanggal</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left",
+                      !meta.tanggal && "text-muted-foreground",
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {meta.tanggal
+                      ? format(meta.tanggal, "PPP", { locale: localeId })
+                      : "Pilih tanggal"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={meta.tanggal}
+                    onSelect={(value) =>
+                      setMeta((prev) => ({ ...prev, tanggal: value }))
+                    }
+                    initialFocus
+                    className="p-3 pointer-events-auto"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label>Enumerator</Label>
+              <Input
+                value={meta.enumerator}
+                onChange={(e) =>
+                  setMeta((prev) => ({ ...prev, enumerator: e.target.value }))
+                }
+                placeholder="Nama enumerator"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Tanda Tangan</Label>
+              <div className="rounded-lg border border-border p-3 space-y-2">
+                <canvas
+                  ref={canvasRef}
+                  className="w-full h-[120px] bg-background"
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerLeave={handlePointerUp}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSignatureClear}
+                >
+                  Bersihkan
+                </Button>
+              </div>
+            </div>
+            <Button
+              className="w-full bg-primary text-primary-foreground"
+              onClick={handleSetupNext}
+            >
+              Mulai Pendataan
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (view === "detail") {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold">Detail Pendataan</h1>
+            <p className="text-sm text-muted-foreground">
+              Data yang sudah difinalisasi.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={() => {
+              resetReportState();
+              setView("dashboard");
+            }}
+          >
+            Kembali
           </Button>
+        </div>
+
+        <Card>
+          <CardContent className="p-5 space-y-2">
+            {renderInfoRow(
+              "Pasar",
+              pasar.find((p) => p.id === meta.pasarId)?.nama ?? "-",
+            )}
+            {renderInfoRow(
+              "Tanggal",
+              meta.tanggal
+                ? format(meta.tanggal, "PPP", { locale: localeId })
+                : "-",
+            )}
+            {renderInfoRow("Enumerator", meta.enumerator || "-")}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          {items.map((item) => {
+            const kom = komoditas.find((k) => k.id === item.komoditasId);
+            return (
+              <Card key={item.komoditasId}>
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Komoditas
+                      </p>
+                      <h3 className="text-lg font-semibold">
+                        {kom?.nama ?? "-"}
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="grid gap-3">
+                    {item.samples.map((sample) => (
+                      <div
+                        key={sample.kelas}
+                        className="rounded-lg border border-border p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              "text-xs capitalize",
+                              getKelasStyle(sample.kelas),
+                            )}
+                          >
+                            {sample.kelas}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            {sample.satuanInput}
+                          </span>
+                        </div>
+                        <p className="text-sm">
+                          Tempat usaha:{" "}
+                          {tempatUsaha.find(
+                            (t) => t.id === sample.tempatUsahaId,
+                          )?.nama ?? "-"}
+                        </p>
+                        <p className="text-sm">
+                          Harga input: Rp{" "}
+                          {sample.hargaInput.toLocaleString("id-ID")}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
+    );
+  }
 
-      {/* Filter */}
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Cari..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 h-9" />
+  const averageForItem = (item: ReportItem) => {
+    const kom = komoditas.find((k) => k.id === item.komoditasId);
+    if (!kom) return 0;
+    const prices = item.samples
+      .map((sample) =>
+        hitungHargaStandar(
+          sample.hargaInput,
+          sample.jumlahInput,
+          sample.satuanInput,
+          kom.satuan_dasar,
+        ),
+      )
+      .filter((p) => p > 0);
+    if (prices.length === 0) return 0;
+    return Math.round(prices.reduce((acc, p) => acc + p, 0) / prices.length);
+  };
+
+  const getWarning = (item: ReportItem) => {
+    if (!meta.pasarId) return false;
+    const latest =
+      latestByPasarKomoditas[`${meta.pasarId}-${item.komoditasId}`];
+    if (!latest) return false;
+    const avg = averageForItem(item);
+    if (!avg) return false;
+    const diff = Math.abs(avg - latest.harga_rata_rata);
+    return diff > latest.harga_rata_rata * 0.5;
+  };
+
+  if (view === "review") {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Review Data</h1>
+          <Button variant="outline" onClick={() => setView("input")}>
+            Kembali Edit
+          </Button>
         </div>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-28 sm:w-40 h-9"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua</SelectItem>
-            <SelectItem value="dalam_proses">Proses</SelectItem>
-            <SelectItem value="finalisasi">Final</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterPasar} onValueChange={setFilterPasar}>
-          <SelectTrigger className="w-28 sm:w-40 h-9"><SelectValue placeholder="Pasar" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua</SelectItem>
-            {pasar.map(p => <SelectItem key={p.id} value={p.id}>{p.nama}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Button variant="outline" size="sm" className="h-9 sm:hidden" onClick={handleExport}>
-          <Download className="h-4 w-4 mr-1" /> Ekspor
+
+        <Card>
+          <CardContent className="p-5 space-y-2">
+            {renderInfoRow(
+              "Pasar",
+              pasar.find((p) => p.id === meta.pasarId)?.nama ?? "-",
+            )}
+            {renderInfoRow(
+              "Tanggal",
+              meta.tanggal
+                ? format(meta.tanggal, "PPP", { locale: localeId })
+                : "-",
+            )}
+            {renderInfoRow("Enumerator", meta.enumerator || "-")}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5 space-y-4">
+            {items.map((item) => {
+              const kom = komoditas.find((k) => k.id === item.komoditasId);
+              const avg = averageForItem(item);
+              const hasError = item.samples.some(
+                (sample) => sample.hargaInput <= 0 || !sample.tempatUsahaId,
+              );
+              const isWarning = !hasError && getWarning(item);
+              return (
+                <div
+                  key={item.komoditasId}
+                  className="flex items-center justify-between border-b border-border pb-3"
+                >
+                  <div>
+                    <p className="font-medium">{kom?.nama ?? "-"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Rata-rata: Rp {avg.toLocaleString("id-ID")}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-xs",
+                      hasError
+                        ? "border-danger/30 text-danger"
+                        : isWarning
+                          ? "border-warning/30 text-warning"
+                          : "border-success/30 text-success",
+                    )}
+                  >
+                    {hasError ? "Error" : isWarning ? "Warning" : "Valid"}
+                  </Badge>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => setView("input")}
+          >
+            Kembali Edit
+          </Button>
+          <Button
+            className="flex-1 bg-primary text-primary-foreground"
+            onClick={() => setFinalizeOpen(true)}
+          >
+            Finalisasi
+          </Button>
+        </div>
+
+        <AlertDialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Finalisasi Data</AlertDialogTitle>
+              <AlertDialogDescription>
+                Data yang telah difinalisasi tidak dapat diubah kembali.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Batal</AlertDialogCancel>
+              <AlertDialogAction onClick={handleFinalize}>
+                Ya, Finalisasi
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Input Harga</h1>
+          <p className="text-sm text-muted-foreground">
+            Isi data harga 3 sampel untuk setiap komoditas.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            resetReportState();
+            setView("dashboard");
+          }}
+        >
+          Batal
         </Button>
       </div>
 
-      {/* Daftar */}
-      <div className="space-y-2">
-        {filtered.map(h => {
-          const kom = komoditas.find(k => k.id === h.komoditas_id);
-          const pas = pasar.find(p => p.id === h.pasar_id);
-          const isFinal = h.status === 'finalisasi';
+      <Card>
+        <CardContent className="p-5 space-y-2">
+          {renderInfoRow(
+            "Pasar",
+            pasar.find((p) => p.id === meta.pasarId)?.nama ?? "-",
+          )}
+          {renderInfoRow(
+            "Tanggal",
+            meta.tanggal
+              ? format(meta.tanggal, "PPP", { locale: localeId })
+              : "-",
+          )}
+          {renderInfoRow("Enumerator", meta.enumerator || "-")}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-5 space-y-4">
+          <div className="flex flex-wrap gap-3">
+            <Select
+              value={selectedKomoditas}
+              onValueChange={setSelectedKomoditas}
+            >
+              <SelectTrigger className="w-full sm:w-72">
+                <SelectValue placeholder="Pilih komoditas" />
+              </SelectTrigger>
+              <SelectContent>
+                {komoditas.map((k) => (
+                  <SelectItem key={k.id} value={k.id}>
+                    {k.nama}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={handleAddKomoditas}
+              className="bg-primary text-primary-foreground"
+            >
+              <Plus className="h-4 w-4 mr-1" /> Tambah Komoditas
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-4">
+        {items.map((item) => {
+          const kom = komoditas.find((k) => k.id === item.komoditasId);
+          const satuanDasar = kom?.satuan_dasar ?? "kg";
+          const filledSamples = item.samples.filter(
+            (sample) =>
+              sample.tempatUsahaId &&
+              sample.hargaInput > 0 &&
+              sample.jumlahInput > 0,
+          ).length;
+          const progressPct = Math.round(
+            (filledSamples / item.samples.length) * 100,
+          );
           return (
-            <Card key={h.id} className={cn('transition-colors', isFinal && 'border-success/20')}>
-              <CardContent className="p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-sm">{kom?.nama || '-'}</h3>
-                      <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle(h.kelas_komoditas))}>
-                        {h.kelas_komoditas}
-                      </Badge>
+            <Card key={item.komoditasId}>
+              <CardContent className="p-0">
+                <details className="group">
+                  <summary className="flex items-center justify-between px-5 py-4 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                        Komoditas
+                      </p>
+                      <h3 className="text-lg font-semibold">
+                        {kom?.nama ?? "-"}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Satuan dasar: {satuanDasar}
+                      </p>
+                      {currentGroupStatus === "draft" && (
+                        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>
+                            Progress {filledSamples}/{item.samples.length}
+                          </span>
+                          <span className="h-1 w-24 rounded-full bg-muted overflow-hidden">
+                            <span
+                              className="block h-full bg-primary"
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </span>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {pas?.nama} • {h.tanggal} • {h.nama_enumerator}
-                    </p>
-                    <p className="text-sm font-bold mt-1 text-accent">Rp {h.harga.toLocaleString('id-ID')}/{kom?.satuan_dasar || ''}</p>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="px-5 pb-5 space-y-4">
+                    <div className="flex justify-end">
+                      <Button
+                        variant="ghost"
+                        className="text-danger"
+                        onClick={() => handleRemoveKomoditas(item.komoditasId)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="grid gap-4">
+                      {item.samples.map((sample) => {
+                        const tuOptions = getTempatUsahaOptions(
+                          meta.pasarId,
+                          item.komoditasId,
+                          sample.kelas,
+                        );
+                        const baseType =
+                          KONVERSI_SATUAN[satuanDasar]?.base || "kg";
+                        const compatibleSatuan = SATUAN_DASAR_OPTIONS.filter(
+                          (s) => KONVERSI_SATUAN[s.value].base === baseType,
+                        );
+                        const tuName = sample.tempatUsahaId
+                          ? (tempatUsaha.find(
+                              (t) => t.id === sample.tempatUsahaId,
+                            )?.nama ?? "-")
+                          : "Belum dipilih";
+                        const isSampleFilled =
+                          !!sample.tempatUsahaId &&
+                          sample.hargaInput > 0 &&
+                          sample.jumlahInput > 0;
+                        return (
+                          <details
+                            key={sample.kelas}
+                            className="group rounded-lg border border-border p-4"
+                          >
+                            <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                              <div className="space-y-1">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-xs capitalize",
+                                    getKelasStyle(sample.kelas),
+                                  )}
+                                >
+                                  {sample.kelas}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground">
+                                  TU: {tuName}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Harga:{" "}
+                                  {sample.hargaInput > 0
+                                    ? `Rp ${sample.hargaInput.toLocaleString("id-ID")}`
+                                    : "-"}
+                                </p>
+                              </div>
+                              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" />
+                            </summary>
+                            {currentGroupStatus === "draft" && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Status:{" "}
+                                {isSampleFilled ? "Terisi" : "Belum lengkap"}
+                              </p>
+                            )}
+                            <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                              <div className="space-y-2">
+                                <Label>Tempat Usaha</Label>
+                                <Select
+                                  value={sample.tempatUsahaId}
+                                  onValueChange={(value) =>
+                                    updateSample(
+                                      item.komoditasId,
+                                      sample.kelas,
+                                      { tempatUsahaId: value },
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Pilih tempat usaha" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {tuOptions.map((t) => (
+                                      <SelectItem key={t.id} value={t.id}>
+                                        {t.nama}
+                                      </SelectItem>
+                                    ))}
+                                    {tuOptions.length === 0 && (
+                                      <SelectItem value="_none" disabled>
+                                        Tidak ada tempat usaha
+                                      </SelectItem>
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Harga (Rp)</Label>
+                                <Input
+                                  type="number"
+                                  value={sample.hargaInput || ""}
+                                  onChange={(e) =>
+                                    updateSample(
+                                      item.komoditasId,
+                                      sample.kelas,
+                                      {
+                                        hargaInput:
+                                          parseFloat(e.target.value) || 0,
+                                      },
+                                    )
+                                  }
+                                  placeholder="0"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Jumlah</Label>
+                                <Input
+                                  type="number"
+                                  value={sample.jumlahInput || ""}
+                                  onChange={(e) =>
+                                    updateSample(
+                                      item.komoditasId,
+                                      sample.kelas,
+                                      {
+                                        jumlahInput:
+                                          parseFloat(e.target.value) || 0,
+                                      },
+                                    )
+                                  }
+                                  placeholder="1"
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Satuan</Label>
+                                <Select
+                                  value={sample.satuanInput}
+                                  onValueChange={(value) =>
+                                    updateSample(
+                                      item.komoditasId,
+                                      sample.kelas,
+                                      { satuanInput: value as SatuanDasar },
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {compatibleSatuan.map((s) => (
+                                      <SelectItem key={s.value} value={s.value}>
+                                        {s.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              {sample.hargaInput > 0 &&
+                                sample.jumlahInput > 0 && (
+                                  <div className="md:col-span-2 rounded-lg border border-accent/30 bg-accent/5 p-3 text-xs text-muted-foreground">
+                                    Harga terstandarisasi: Rp{" "}
+                                    {hitungHargaStandar(
+                                      sample.hargaInput,
+                                      sample.jumlahInput,
+                                      sample.satuanInput,
+                                      satuanDasar,
+                                    ).toLocaleString("id-ID")}{" "}
+                                    / {satuanDasar}
+                                  </div>
+                                )}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <Badge variant="outline" className={cn('text-xs', getStatusStyle(h.status))}>
-                      {isFinal ? 'Final' : 'Proses'}
-                    </Badge>
-                    {!isFinal && (
-                      <>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(h)}>
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7"><Trash2 className="h-3 w-3 text-destructive" /></Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader><AlertDialogTitle>Hapus?</AlertDialogTitle><AlertDialogDescription>Data akan dihapus permanen.</AlertDialogDescription></AlertDialogHeader>
-                            <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => { deleteHargaRutin(h.id); toast.success('Dihapus'); }}>Hapus</AlertDialogAction></AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </>
-                    )}
-                  </div>
-                </div>
+                </details>
               </CardContent>
             </Card>
           );
         })}
-        {filtered.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">Tidak ada data.</p>}
       </div>
 
-      {/* Legenda */}
-      <Card>
-        <CardContent className="p-3">
-          <div className="flex flex-wrap gap-3 text-xs">
-            <span className="text-muted-foreground font-medium">Status:</span>
-            <Badge variant="outline" className={cn('text-xs', getStatusStyle('finalisasi'))}>Finalisasi</Badge>
-            <Badge variant="outline" className={cn('text-xs', getStatusStyle('dalam_proses'))}>Dalam Proses</Badge>
-            <span className="text-muted-foreground font-medium ml-2">Kelas:</span>
-            <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle('besar'))}>Besar</Badge>
-            <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle('menengah'))}>Menengah</Badge>
-            <Badge variant="outline" className={cn('text-xs capitalize', getKelasStyle('kecil'))}>Kecil</Badge>
-          </div>
-        </CardContent>
-      </Card>
+      {items.length === 0 && (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">
+            Tambahkan komoditas untuk mulai input harga.
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="sticky bottom-0 bg-background/95 backdrop-blur border-t border-border py-4">
+        <div className="max-w-6xl mx-auto px-2 flex gap-3">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={handleSaveDraft}
+          >
+            Simpan Draft
+          </Button>
+          <Button
+            className="flex-1 bg-primary text-primary-foreground"
+            onClick={() => {
+              if (validateReport(false)) setView("review");
+            }}
+          >
+            Review Data
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

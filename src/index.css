@@ -1,117 +1,103 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Manrope:wght@300;400;500;600;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    /* ===== Warna Dasar ===== */
+    /* Minimal palette: white, blue, gold */
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 214 52% 28%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 214 52% 28%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 214 52% 28%;
 
-    /* ===== Warna Primer — Navy Gelap ===== */
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 214 52% 34%;
+    --primary-foreground: 0 0% 100%;
 
-    /* ===== Warna Sekunder ===== */
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 214 52% 96%;
+    --secondary-foreground: 214 52% 28%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 214 52% 95%;
+    --muted-foreground: 214 20% 38%;
 
-    /* ===== Warna Aksen — Gold #DBAF6C ===== */
-    --accent: 36 61% 64%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 37 62% 64%;
+    --accent-foreground: 214 52% 18%;
 
-    /* ===== Warna Destruktif — Merah ===== */
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 37 62% 64%;
+    --destructive-foreground: 214 52% 18%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 36 61% 64%;
+    --border: 214 52% 90%;
+    --input: 214 52% 90%;
+    --ring: 37 62% 64%;
     --radius: 0.5rem;
 
-    /* ===== Gold Accent ===== */
-    --gold: 36 61% 64%;
-    --gold-foreground: 222.2 47.4% 11.2%;
+    --gold: 37 62% 64%;
+    --gold-foreground: 214 52% 18%;
 
-    /* ===== Indikator Status ===== */
-    /* Hijau — untuk sukses, aktif, harga turun (positif) */
+    /* Semantic indicator colors (keep previous behavior) */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
 
-    /* Merah — untuk bahaya, harga naik (negatif) */
     --danger: 0 84% 60%;
     --danger-foreground: 0 0% 100%;
 
-    /* Kuning/Amber — untuk warning, stabil, proses */
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    /* Biru — untuk info, kelas menengah */
     --info: 217 91% 60%;
     --info-foreground: 0 0% 100%;
 
-    /* ===== Kelas Komoditas ===== */
-    /* Besar — Gold accent */
     --kelas-besar: 36 61% 64%;
-    /* Menengah — Biru */
     --kelas-menengah: 217 91% 60%;
-    /* Kecil — Abu-abu */
     --kelas-kecil: 215 16% 47%;
 
-    /* ===== Sidebar ===== */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 36 61% 64%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 36 61% 64%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 214 52% 28%;
+    --sidebar-primary: 214 52% 34%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 37 62% 64%;
+    --sidebar-accent-foreground: 214 52% 18%;
+    --sidebar-border: 214 52% 90%;
+    --sidebar-ring: 37 62% 64%;
   }
 
   .dark {
-    /* ===== Warna Dasar — Dark Mode ===== */
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 214 52% 12%;
+    --foreground: 0 0% 100%;
 
-    --card: 222.2 47.4% 11.2%;
-    --card-foreground: 210 40% 98%;
+    --card: 214 52% 16%;
+    --card-foreground: 0 0% 100%;
 
-    --popover: 222.2 47.4% 11.2%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 214 52% 16%;
+    --popover-foreground: 0 0% 100%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 214 52% 16%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 214 52% 20%;
+    --secondary-foreground: 0 0% 100%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 214 52% 22%;
+    --muted-foreground: 214 20% 80%;
 
-    --accent: 36 61% 64%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 37 62% 64%;
+    --accent-foreground: 214 52% 16%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 37 62% 64%;
+    --destructive-foreground: 214 52% 16%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 36 61% 64%;
+    --border: 214 52% 22%;
+    --input: 214 52% 22%;
+    --ring: 37 62% 64%;
 
-    --gold: 36 61% 64%;
-    --gold-foreground: 222.2 47.4% 11.2%;
+    --gold: 37 62% 64%;
+    --gold-foreground: 214 52% 16%;
 
-    /* ===== Indikator Status — Dark Mode ===== */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
@@ -124,20 +110,18 @@
     --info: 217 91% 60%;
     --info-foreground: 0 0% 100%;
 
-    /* ===== Kelas Komoditas — Dark Mode ===== */
     --kelas-besar: 36 61% 64%;
     --kelas-menengah: 217 91% 60%;
     --kelas-kecil: 215 20% 65%;
 
-    /* ===== Sidebar — Dark Mode ===== */
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 36 61% 64%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 36 61% 64%;
+    --sidebar-background: 214 52% 12%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 214 52% 16%;
+    --sidebar-accent: 37 62% 64%;
+    --sidebar-accent-foreground: 214 52% 16%;
+    --sidebar-border: 214 52% 22%;
+    --sidebar-ring: 37 62% 64%;
   }
 }
 
@@ -148,5 +132,34 @@
 
   body {
     @apply bg-background text-foreground;
+    font-family: "Manrope", sans-serif;
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: "Fraunces", serif;
+  }
+
+  .hero-sheen {
+    background:
+      radial-gradient(60% 60% at 12% 18%, hsl(var(--accent) / 0.22), transparent 60%),
+      radial-gradient(50% 50% at 88% 22%, hsl(var(--primary) / 0.22), transparent 60%),
+      linear-gradient(180deg, hsl(var(--background)) 0%, hsl(var(--background)) 100%);
+  }
+
+  .glass-frame {
+    background: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(var(--secondary)) 100%);
+    border: 1px solid hsl(var(--border));
+  }
+
+  @keyframes float {
+    0% { transform: translateY(0); }
+    50% { transform: translateY(-6px); }
+    100% { transform: translateY(0); }
+  }
+
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
   }
 }
