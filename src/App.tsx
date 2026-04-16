@@ -17,6 +17,7 @@ import HargaPelaporanPage from "@/pages/HargaPelaporanPage";
 import NotFound from "@/pages/NotFound";
 import LandingPage from "@/pages/LandingPage";
 import TempatUsahaPublic from "@/pages/TempatUsahaPublic";
+import KomoditasPublicDashboard from "@/pages/KomoditasPublicDashboard";
 
 const queryClient = new QueryClient();
 
@@ -50,6 +51,10 @@ const AppRoutes = () => (
       }
     />
     <Route path="/public/tempat-usaha/:id" element={<TempatUsahaPublic />} />
+    <Route
+      path="/public/komoditas"
+      element={<KomoditasPublicDashboard />}
+    />
     <Route
       path="/login"
       element={
