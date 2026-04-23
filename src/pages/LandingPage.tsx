@@ -542,70 +542,20 @@ export default function LandingPage() {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return [] as SearchRow[];
 
-    const resultMap = new Map<string, SearchRow>();
-    const addRow = (row: SearchRow) => {
-      if (!resultMap.has(row.key)) resultMap.set(row.key, row);
-    };
-
-    komoditas
+    return komoditas
       .filter((k) => k.nama.toLowerCase().includes(normalized))
-      .forEach((k) => {
+      .map((k) => {
         const latest = latestByKomoditas[k.id];
-        addRow({
+        return {
           key: `kom-${k.id}`,
           title: k.nama,
           subtitle: latest ? `Update ${latest.tanggal}` : "Belum ada data",
           price: latest?.harga_rata_rata,
           unit: k.satuan_dasar,
-        });
-      });
-
-    pasar
-      .filter((p) => p.nama.toLowerCase().includes(normalized))
-      .forEach((p) => {
-        komoditas.forEach((k) => {
-          const latest = latestByKey[`${p.id}-${k.id}`];
-          if (!latest) return;
-          addRow({
-            key: `psr-${p.id}-${k.id}`,
-            title: k.nama,
-            subtitle: p.nama,
-            price: latest.harga_rata_rata,
-            unit: k.satuan_dasar,
-          });
-        });
-      });
-
-    tempatUsaha
-      .filter((t) => t.nama.toLowerCase().includes(normalized))
-      .forEach((t) => {
-        const pasarInfo = pasar.find((p) => p.id === t.pasar_id);
-        komoditasDijual
-          .filter((kd) => kd.tempat_usaha_id === t.id && kd.is_active)
-          .forEach((kd) => {
-            const kom = komoditas.find((k) => k.id === kd.komoditas_id);
-            const latest = latestByKey[`${t.pasar_id}-${kd.komoditas_id}`];
-            addRow({
-              key: `tu-${t.id}-${kd.komoditas_id}`,
-              title: kom?.nama ?? "Komoditas",
-              subtitle: `${t.nama} - ${pasarInfo?.nama ?? ""}`.trim(),
-              price: latest?.harga_rata_rata,
-              unit: kom?.satuan_dasar,
-              link: `/public/tempat-usaha/${t.id}`,
-            });
-          });
-      });
-
-    return Array.from(resultMap.values()).slice(0, 8);
-  }, [
-    query,
-    komoditas,
-    pasar,
-    tempatUsaha,
-    komoditasDijual,
-    latestByKey,
-    latestByKomoditas,
-  ]);
+        };
+      })
+      .slice(0, 8);
+  }, [query, komoditas, latestByKomoditas]);
 
   const heroSlides = [
     {
@@ -722,8 +672,8 @@ export default function LandingPage() {
               className="section-lead text-base sm:text-sm animate-fade-up"
               style={{ animationDelay: "250ms" }}
             >
-              Cari komoditas, pasar, atau tempat usaha untuk melihat harga
-              rata-rata terbaru. Semua data dirangkum agar mudah dipahami.
+              Cari nama komoditas untuk melihat harga rata-rata terbaru.
+              Semua data dirangkum agar mudah dipahami.
             </p>
             <div
               className="relative animate-fade-up"
@@ -733,7 +683,7 @@ export default function LandingPage() {
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Cari komoditas, pasar, atau tempat usaha"
+                placeholder="Cari nama komoditas"
                 className="pl-10 h-11 bg-background"
               />
             </div>
