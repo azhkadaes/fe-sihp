@@ -1,4 +1,4 @@
-# Sistem Informasi Harga Pangan (Admin)
+# Sistem Informasi Harga Pangan 
 
 Dashboard admin berbasis React + TypeScript untuk mengelola data pasar, komoditas, tempat usaha, input harga rutin, dan menghasilkan harga pelaporan secara otomatis dari data yang sudah difinalisasi.
 
