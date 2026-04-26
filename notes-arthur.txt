@@ -1,0 +1,2 @@
+26/04/26 authentikasi saya buat sudah pasti bisa login bila 
+email === 'admin@admin.com'  password === 'admin123' atau ada akun lain yang ada di db (runnning docker)
