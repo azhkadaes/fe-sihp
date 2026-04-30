@@ -18,18 +18,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      if (login(email, password)) {
-        toast.success('Login berhasil!');
-        navigate(isMobile ? '/harga-rutin' : '/dashboard');
-      } else {
-        toast.error('Email atau password salah. Gunakan admin@admin.com / admin123');
-      }
-      setLoading(false);
-    }, 500);
+    const ok = await login(email, password);
+    if (ok) {
+      toast.success('Login berhasil!');
+      navigate(isMobile ? '/harga-rutin' : '/dashboard');
+    } else {
+      toast.error('Email atau password salah. Gunakan admin@admin.com / admin123');
+    }
+    setLoading(false);
   };
 
   return (

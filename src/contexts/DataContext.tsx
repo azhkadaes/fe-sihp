@@ -4,7 +4,7 @@
  * Komoditas Dijual, Harga Rutin, dan Harga Pelaporan.
  * Data disimpan di localStorage untuk persistensi prototype.
  */
-import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import type { Pasar, Komoditas, TempatUsaha, KomoditasDijual, HargaRutin, HargaPelaporan, KelasKomoditas, PeriodeUnit } from '@/types';
 import { PERIODE_TO_DAYS } from '@/types';
 
@@ -29,6 +29,8 @@ function uid() { return crypto.randomUUID(); }
 /* ===== Interface Context ===== */
 
 interface DataContextType {
+  refreshPasar: () => Promise<void>;
+  refreshKomoditas: () => Promise<void>;
   pasar: Pasar[]; setPasar: React.Dispatch<React.SetStateAction<Pasar[]>>;
   komoditas: Komoditas[]; setKomoditas: React.Dispatch<React.SetStateAction<Komoditas[]>>;
   tempatUsaha: TempatUsaha[]; setTempatUsaha: React.Dispatch<React.SetStateAction<TempatUsaha[]>>;
@@ -36,6 +38,7 @@ interface DataContextType {
   hargaRutin: HargaRutin[]; setHargaRutin: React.Dispatch<React.SetStateAction<HargaRutin[]>>;
   hargaPelaporan: HargaPelaporan[];
   addPasar: (p: Omit<Pasar, 'id'>) => void;
+  createPasar: (p: Omit<Pasar, 'id'>) => Promise<Pasar | null>;
   updatePasar: (id: string, p: Partial<Pasar>) => void;
   deletePasar: (id: string) => void;
   addKomoditas: (k: Omit<Komoditas, 'id'>) => void;
@@ -257,6 +260,97 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updatePasar = (id: string, p: Partial<Pasar>) => persist('pasar', setPasar, prev => prev.map(x => x.id === id ? { ...x, ...p } : x));
   const deletePasar = (id: string) => persist('pasar', setPasar, prev => prev.filter(x => x.id !== id));
 
+  const createPasar = useCallback(async (p: Omit<Pasar, 'id'>): Promise<Pasar | null> => {
+    try {
+      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
+      const res = await fetch(`${base}/v1/pasar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(p),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        const item = (body?.data ?? body) as any;
+        const mapped: Pasar = {
+          id: item.id ?? item._id ?? item.pasar_id ?? uid(),
+          nama: item.nama ?? item.name ?? p.nama,
+          longitude: Number(item.longitude ?? item.lng ?? item.lon ?? p.longitude ?? 0),
+          latitude: Number(item.latitude ?? item.lat ?? p.latitude ?? 0),
+          alamat: item.alamat ?? item.address ?? p.alamat ?? '',
+          is_active: Number(item.is_active ?? item.isActive ?? (item.active ? 1 : 0) ?? p.is_active ?? 1),
+        };
+        persist('pasar', setPasar, prev => [...prev, mapped]);
+        return mapped;
+      }
+    } catch (err) {
+      // fallback to local
+    }
+
+    const newItem: Pasar = { ...p, id: uid() };
+    persist('pasar', setPasar, prev => [...prev, newItem]);
+    return newItem;
+  }, [persist]);
+
+  /* ===== Fetch dari API (Read only) ===== */
+  const refreshPasar = useCallback(async () => {
+    try {
+      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
+      const res = await fetch(`${base}/v1/pasar`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const data = body?.data ?? body;
+      if (!Array.isArray(data)) return;
+
+      const mapped: Pasar[] = data.map((item: any) => ({
+        id: item.id ?? item._id ?? item.pasar_id ?? uid(),
+        nama: item.nama ?? item.name ?? '',
+        longitude: Number(item.longitude ?? item.lng ?? item.lon ?? 0),
+        latitude: Number(item.latitude ?? item.lat ?? 0),
+        alamat: item.alamat ?? item.address ?? '',
+        is_active: Number(item.is_active ?? item.isActive ?? (item.active ? 1 : 0)),
+      }));
+
+      if (mapped.length > 0) {
+        setPasar(mapped);
+        save('pasar', mapped);
+      }
+    } catch (err) {
+      // gagal ambil, biarkan data lokal tetap
+      // console.error('refreshPasar error', err);
+    }
+  }, []);
+
+  const refreshKomoditas = useCallback(async () => {
+    try {
+      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
+      const res = await fetch(`${base}/v1/komoditas`);
+      if (!res.ok) return;
+      const body = await res.json();
+      const data = body?.data ?? body;
+      if (!Array.isArray(data)) return;
+
+      const mapped: Komoditas[] = data.map((item: any) => ({
+        id: item.id ?? item._id ?? item.komoditas_id ?? uid(),
+        nama: item.nama ?? item.name ?? '',
+        satuan_dasar: (item.satuan_dasar ?? item.satuan ?? 'kg') as any,
+        gambar: item.gambar ?? item.image ?? '',
+      }));
+
+      if (mapped.length > 0) {
+        setKomoditas(mapped);
+        save('komoditas', mapped);
+      }
+    } catch (err) {
+      // gagal ambil, biarkan data lokal tetap
+    }
+  }, []);
+
+  // Jalankan sekali saat provider mount
+  useEffect(() => {
+    void refreshPasar();
+    void refreshKomoditas();
+  }, [refreshPasar, refreshKomoditas]);
+
   /* ===== CRUD Komoditas ===== */
   const addKomoditas = (k: Omit<Komoditas, 'id'>) => persist('komoditas', setKomoditas, prev => [...prev, { ...k, id: uid() }]);
   const updateKomoditas = (id: string, k: Partial<Komoditas>) => persist('komoditas', setKomoditas, prev => prev.map(x => x.id === id ? { ...x, ...k } : x));
@@ -410,7 +504,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{
       pasar, setPasar, komoditas, setKomoditas, tempatUsaha, setTempatUsaha,
       komoditasDijual, setKomoditasDijual, hargaRutin, setHargaRutin, hargaPelaporan,
-      addPasar, updatePasar, deletePasar,
+      refreshPasar, refreshKomoditas,
+      addPasar, createPasar, updatePasar, deletePasar,
       addKomoditas, updateKomoditas, deleteKomoditas,
       addTempatUsaha, updateTempatUsaha, deleteTempatUsaha,
       addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual,

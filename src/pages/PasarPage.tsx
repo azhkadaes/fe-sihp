@@ -71,7 +71,7 @@ const emptyPasar = {
 };
 
 export default function PasarPage() {
-  const { pasar, addPasar, updatePasar, deletePasar } = useData();
+  const { pasar, addPasar, createPasar, updatePasar, deletePasar } = useData();
   const isMobile = useIsMobile();
 
   /* ===== State pencarian, filter, sorting ===== */
@@ -143,7 +143,7 @@ export default function PasarPage() {
     setDialogOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nama.trim()) {
       toast.error("Nama pasar wajib diisi");
@@ -153,8 +153,13 @@ export default function PasarPage() {
       updatePasar(editing.id, form);
       toast.success("Pasar diperbarui");
     } else {
-      addPasar(form);
-      toast.success("Pasar ditambahkan");
+      try {
+        await createPasar(form);
+        toast.success("Pasar ditambahkan");
+      } catch (err) {
+        // fallback handled in createPasar
+        toast.success("Pasar ditambahkan (lokal)");
+      }
     }
     setDialogOpen(false);
   };
@@ -171,16 +176,23 @@ export default function PasarPage() {
     toast.success("Data diekspor");
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const readFileAsText = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const rows = parseCSV(reader.result as string);
+    try {
+      const text = await readFileAsText(file);
+      const rows = parseCSV(text);
       let count = 0;
-      rows.forEach((r) => {
+      for (const r of rows) {
         if (r["Nama"]?.trim()) {
-          addPasar({
+          await createPasar({
             nama: r["Nama"].trim(),
             alamat: r["Alamat"] || "",
             longitude: parseFloat(r["Longitude"]) || 0,
@@ -189,11 +201,13 @@ export default function PasarPage() {
           });
           count++;
         }
-      });
+      }
       toast.success(`${count} pasar diimpor`);
-    };
-    reader.readAsText(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err) {
+      toast.error("Gagal mengimpor CSV");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   /* ===== Render ===== */
