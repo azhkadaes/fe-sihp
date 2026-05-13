@@ -14,6 +14,7 @@ import KomoditasPage from "@/pages/KomoditasPage";
 import TempatUsahaPage from "@/pages/TempatUsahaPage";
 import HargaRutinPage from "@/pages/HargaRutinPage";
 import HargaPelaporanPage from "@/pages/HargaPelaporanPage";
+import SpkPrioritasPage from "@/pages/SpkPrioritasPage";
 import NotFound from "@/pages/NotFound";
 import LandingPage from "@/pages/LandingPage";
 import TempatUsahaPublic from "@/pages/TempatUsahaPublic";
@@ -46,7 +47,7 @@ const AppRoutes = () => (
     <Route
       path="/"
       element={
-        <LandingRoute>
+        <LandingRoute>\
           <LandingPage />
         </LandingRoute>
       }
@@ -77,6 +78,7 @@ const AppRoutes = () => (
       <Route path="tempat-usaha" element={<TempatUsahaPage />} />
       <Route path="harga-rutin" element={<HargaRutinPage />} />
       <Route path="harga-pelaporan" element={<HargaPelaporanPage />} />
+      <Route path="spk-prioritas" element={<SpkPrioritasPage />} />
     </Route>
     {/* Keep old routes working */}
     <Route
@@ -138,6 +140,16 @@ const AppRoutes = () => (
       }
     >
       <Route index element={<HargaPelaporanPage />} />
+    </Route>
+    <Route
+      path="/spk-prioritas"
+      element={
+        <ProtectedRoute>
+          <AppLayout />
+        </ProtectedRoute>
+      }
+    >
+      <Route index element={<SpkPrioritasPage />} />
     </Route>
     <Route path="*" element={<NotFound />} />
   </Routes>

@@ -10,6 +10,7 @@ import {
   Building2,
   ClipboardList,
   BarChart3,
+  LineChart,
   Menu,
   X,
   LogOut,
@@ -26,6 +27,7 @@ const menuItems = [
   { title: "Tempat Usaha", path: "/tempat-usaha", icon: Building2 },
   { title: "Harga Rutin", path: "/harga-rutin", icon: ClipboardList },
   { title: "Harga Pelaporan", path: "/harga-pelaporan", icon: BarChart3 },
+  { title: "SPK Prioritas", path: "/spk-prioritas", icon: LineChart },
 ];
 
 export default function AppLayout() {
