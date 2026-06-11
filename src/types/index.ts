@@ -113,10 +113,9 @@ export interface KomoditasDijual {
   pola_distribusi: string;
   /** Stok per hari = nilai_stok / (nilai_periode * PERIODE_TO_DAYS[periode_unit]) */
   standardized_stock_periode: number;
+  kelas_komoditas?: KelasKomoditas;
   is_active: boolean;
 }
-
-export type KelasKomoditas = 'besar' | 'menengah' | 'kecil';
 
 export interface HargaRutin {
   id: string;

@@ -32,6 +32,7 @@ import {
   deleteKomoditasDijualApi,
 } from '@/lib/komoditas-dijual-api';
 import { getAccessToken } from '@/lib/api';
+import { hitungHargaStandar } from '@/types';
 
 /* ===== Helper Functions ===== */
 
@@ -83,6 +84,27 @@ interface DataContextType {
   addHargaRutin: (h: Omit<HargaRutin, 'id'>) => void;
   updateHargaRutin: (id: string, h: Partial<HargaRutin>) => void;
   deleteHargaRutin: (id: string) => void;
+  loadHargaRutinReportGroups: () => Promise<HargaRutinReportGroup[]>;
+  saveHargaRutinReport: (params: {
+    activeBatchId: string | null;
+    pasarId: string;
+    tanggal: Date;
+    enumerator: string;
+    signatureData: string;
+    finalize: boolean;
+    items: {
+      komoditasId: string;
+      samples: {
+        kelas: KelasKomoditas;
+        tempatUsahaId: string;
+        hargaInput: number;
+        jumlahInput: number;
+        satuanInput: import('@/types').SatuanDasar;
+      }[];
+    }[];
+    strict: boolean;
+  }) => Promise<void>;
+  deleteHargaRutinReport: (batchId: string) => Promise<void>;
   calculateHargaPelaporan: () => HargaPelaporan[];
   /** Mendapatkan kelas untuk setiap komoditas yang dijual oleh suatu TU */
   getKelasForTU: (tuId: string) => Record<string, KelasKomoditas>;
@@ -458,6 +480,29 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const refreshKomoditasDijual = useCallback(async (tempatUsahaId?: string) => {
+    if (!getAccessToken()) return;
+
+    try {
+      const mapped = await fetchKomoditasDijualList(
+        tempatUsahaId ? { id_tempat_usaha: tempatUsahaId } : undefined,
+      );
+
+      setKomoditasDijual(prev => {
+        if (tempatUsahaId) {
+          const others = prev.filter(kd => kd.tempat_usaha_id !== tempatUsahaId);
+          const next = [...others, ...mapped];
+          save('komoditasDijual', next);
+          return next;
+        }
+        save('komoditasDijual', mapped);
+        return mapped;
+      });
+    } catch {
+      // biarkan data lokal tetap jika API gagal
+    }
+  }, []);
+
   const addKomoditasDijual = (k: Omit<KomoditasDijual, 'id'>) => {
     const newItem = { ...k, id: uid() };
     newItem.standardized_stock_periode = calcStandardizedStockPerDay(newItem.nilai_stok, newItem.nilai_periode, newItem.periode_unit);
@@ -488,10 +533,163 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
   }, [persist]);
 
-  /* ===== CRUD Harga Rutin ===== */
+  const deleteKomoditasDijual = useCallback(async (id: string): Promise<void> => {
+    await deleteKomoditasDijualApi(id);
+    persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
+  }, [persist]);
+
+  /* ===== CRUD Harga Rutin (legacy local) ===== */
   const addHargaRutin = (h: Omit<HargaRutin, 'id'>) => persist('hargaRutin', setHargaRutin, prev => [...prev, { ...h, id: uid() }]);
   const updateHargaRutin = (id: string, h: Partial<HargaRutin>) => persist('hargaRutin', setHargaRutin, prev => prev.map(x => x.id === id ? { ...x, ...h } : x));
   const deleteHargaRutin = (id: string) => persist('hargaRutin', setHargaRutin, prev => prev.filter(x => x.id !== id));
+
+  const loadHargaRutinReportGroups = useCallback(async (): Promise<HargaRutinReportGroup[]> => {
+    if (!getAccessToken()) return [];
+
+    const [batches, allEntries] = await Promise.all([
+      fetchPengumpulanDataList({ limit: 1000 }),
+      fetchHargaRutinList({ limit: 10000 }),
+    ]);
+
+    const entriesByBatch = new Map<string, typeof allEntries>();
+    allEntries.forEach((entry) => {
+      const list = entriesByBatch.get(entry.id_pengumpulan_data) ?? [];
+      list.push(entry);
+      entriesByBatch.set(entry.id_pengumpulan_data, list);
+    });
+
+    return batches
+      .map((batch) => {
+        const meta = decodeCatatan(batch.catatan);
+        return {
+          id: batch.id,
+          tanggal: parseApiDate(batch.tanggal),
+          pasarId: batch.id_pasar,
+          enumerator: meta.enumerator,
+          signatureData: meta.signature_url ?? meta.signature_data,
+          status: batch.status === 1 ? 'final' as const : 'draft' as const,
+          entries: entriesByBatch.get(batch.id) ?? [],
+        };
+      })
+      .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+  }, []);
+
+  const saveHargaRutinReport = useCallback(async (params: {
+    activeBatchId: string | null;
+    pasarId: string;
+    tanggal: Date;
+    enumerator: string;
+    signatureData: string;
+    finalize: boolean;
+    items: {
+      komoditasId: string;
+      samples: {
+        kelas: KelasKomoditas;
+        tempatUsahaId: string;
+        hargaInput: number;
+        jumlahInput: number;
+        satuanInput: import('@/types').SatuanDasar;
+      }[];
+    }[];
+    strict: boolean;
+  }) => {
+    const desired: {
+      komoditasId: string;
+      kelas: KelasKomoditas;
+      tempatUsahaId: string;
+      harga: number;
+    }[] = [];
+
+    params.items.forEach((item) => {
+      const kom = komoditas.find((k) => k.id === item.komoditasId);
+      const satuanDasar = kom?.satuan_dasar ?? 'kg';
+      item.samples.forEach((sample) => {
+        if (!sample.tempatUsahaId || sample.hargaInput <= 0 || sample.jumlahInput <= 0) return;
+        const harga = hitungHargaStandar(
+          sample.hargaInput,
+          sample.jumlahInput,
+          sample.satuanInput,
+          satuanDasar,
+        );
+        if (harga < 1) return;
+        desired.push({
+          komoditasId: item.komoditasId,
+          kelas: sample.kelas,
+          tempatUsahaId: sample.tempatUsahaId,
+          harga,
+        });
+      });
+    });
+
+    if (params.finalize && desired.length === 0) {
+      throw new Error('Tidak ada data harga yang valid untuk disimpan');
+    }
+
+    const catatanMeta = {
+      enumerator: params.enumerator.trim(),
+      ...(params.signatureData && !params.signatureData.startsWith('data:')
+        ? { signature_url: params.signatureData }
+        : {}),
+    };
+    const catatan = encodeCatatan(catatanMeta);
+    let batchId = params.activeBatchId;
+
+    if (!batchId) {
+      const created = await createPengumpulanDataApi({
+        id_pasar: params.pasarId,
+        tanggal: formatDateForApi(params.tanggal),
+        catatan,
+      });
+      batchId = created.id;
+    } else {
+      await updatePengumpulanDataApi(batchId, { catatan });
+    }
+
+    if (params.signatureData.startsWith('data:')) {
+      const file = await dataUrlToFile(params.signatureData);
+      await uploadPengumpulanTandaTanganApi(batchId, file);
+    }
+
+    const existing = await fetchHargaRutinList({ id_pengumpulan_data: batchId });
+    const desiredKeys = new Set(desired.map((r) => `${r.komoditasId}__${r.kelas}`));
+
+    for (const ex of existing) {
+      const key = `${ex.id_komoditas}__${ex.kelas_komoditas}`;
+      if (!desiredKeys.has(key)) {
+        await deleteHargaRutinApi(ex.id);
+      }
+    }
+
+    for (const row of desired) {
+      const ex = existing.find(
+        (e) => e.id_komoditas === row.komoditasId && e.kelas_komoditas === row.kelas,
+      );
+      if (ex) {
+        if (ex.harga !== row.harga || ex.id_tempat_usaha !== row.tempatUsahaId) {
+          await updateHargaRutinApi(ex.id, {
+            id_tempat_usaha: row.tempatUsahaId,
+            harga: row.harga,
+          });
+        }
+      } else {
+        await createHargaRutinApi({
+          id_pengumpulan_data: batchId,
+          id_tempat_usaha: row.tempatUsahaId,
+          id_komoditas: row.komoditasId,
+          kelas_komoditas: row.kelas,
+          harga: row.harga,
+        });
+      }
+    }
+
+    if (params.finalize) {
+      await finalizePengumpulanDataApi(batchId);
+    }
+  }, [komoditas]);
+
+  const deleteHargaRutinReport = useCallback(async (batchId: string) => {
+    await deletePengumpulanDataApi(batchId);
+  }, []);
 
   /* ===== Klasifikasi Kelas Otomatis — Distribusi Normal ===== */
   /**
@@ -543,12 +741,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Mendapatkan kelas untuk semua TU yang menjual komoditas tertentu di pasar tertentu.
    */
   const getKelasForKomoditasInPasar = useCallback((pasarId: string, komoditasId: string): Record<string, KelasKomoditas> => {
-    // Cari semua KD untuk komoditas ini di pasar ini
     const allKDs = komoditasDijual.filter(kd => {
       if (kd.komoditas_id !== komoditasId || !kd.is_active) return false;
       const tu = tempatUsaha.find(t => t.id === kd.tempat_usaha_id);
       return tu && tu.pasar_id === pasarId && tu.is_active === 1;
     });
+
+    const withKelas = allKDs.filter(kd => kd.kelas_komoditas);
+    if (withKelas.length > 0 && withKelas.length === allKDs.length) {
+      const result: Record<string, KelasKomoditas> = {};
+      allKDs.forEach(kd => {
+        if (kd.kelas_komoditas) result[kd.tempat_usaha_id] = kd.kelas_komoditas;
+      });
+      return result;
+    }
 
     const items = allKDs.map(kd => ({
       tuId: kd.tempat_usaha_id,
