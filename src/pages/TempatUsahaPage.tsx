@@ -50,8 +50,8 @@ const getKelasStyle = (kelas: string) => {
 export default function TempatUsahaPage() {
   const {
     tempatUsaha, createTempatUsaha, updateTempatUsaha, deleteTempatUsaha,
-    refreshTempatUsaha, refreshPasar,
-    pasar, komoditas, komoditasDijual, addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual, getKelasForTU,
+    refreshTempatUsaha, refreshPasar, refreshKomoditasDijual,
+    pasar, komoditas, komoditasDijual, createKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual, getKelasForTU,
   } = useData();
   const isMobile = useIsMobile();
 
@@ -59,6 +59,8 @@ export default function TempatUsahaPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [kdLoading, setKdLoading] = useState(false);
+  const [kdSubmitting, setKdSubmitting] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TempatUsaha | null>(null);
   const [form, setForm] = useState<Omit<TempatUsaha, 'id'>>(emptyTU);
@@ -78,13 +80,26 @@ export default function TempatUsahaPage() {
     let cancelled = false;
     void (async () => {
       setLoading(true);
-      await Promise.all([refreshPasar(), refreshTempatUsaha()]);
+      await Promise.all([refreshPasar(), refreshTempatUsaha(), refreshKomoditasDijual()]);
       if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [refreshPasar, refreshTempatUsaha]);
+  }, [refreshPasar, refreshTempatUsaha, refreshKomoditasDijual]);
+
+  useEffect(() => {
+    if (!selectedTU) return;
+    let cancelled = false;
+    void (async () => {
+      setKdLoading(true);
+      await refreshKomoditasDijual(selectedTU.id);
+      if (!cancelled) setKdLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTU, refreshKomoditasDijual]);
 
   /* ===== Filter & Sort ===== */
   const filtered = tempatUsaha
@@ -204,13 +219,34 @@ export default function TempatUsahaPage() {
     setKdDialogOpen(true);
   };
 
-  const handleKDSubmit = (e: React.FormEvent) => {
+  const handleKDSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!kdForm.komoditas_id) { toast.error('Pilih komoditas'); return; }
     if (kdForm.harga_normal <= 0) { toast.error('Harga normal harus > 0'); return; }
-    if (editingKD) { updateKomoditasDijual(editingKD.id, kdForm); toast.success('Diperbarui'); }
-    else { addKomoditasDijual(kdForm); toast.success('Ditambahkan'); }
-    setKdDialogOpen(false);
+    setKdSubmitting(true);
+    try {
+      if (editingKD) {
+        await updateKomoditasDijual(editingKD.id, kdForm);
+        toast.success('Diperbarui');
+      } else {
+        await createKomoditasDijual(kdForm);
+        toast.success('Ditambahkan');
+      }
+      setKdDialogOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal menyimpan komoditas dijual');
+    } finally {
+      setKdSubmitting(false);
+    }
+  };
+
+  const handleDeleteKD = async (id: string) => {
+    try {
+      await deleteKomoditasDijual(id);
+      toast.success('Dihapus');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal menghapus komoditas dijual');
+    }
   };
 
   /** Label pola distribusi dari value */
@@ -328,7 +364,9 @@ export default function TempatUsahaPage() {
                 <Label>Aktif</Label>
               </div>
 
-              <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">Simpan</Button>
+              <Button type="submit" disabled={kdSubmitting} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+                {kdSubmitting ? 'Menyimpan...' : 'Simpan'}
+              </Button>
             </form>
           </DialogContent>
         </Dialog>
@@ -343,6 +381,9 @@ export default function TempatUsahaPage() {
         </div>
 
         {/* Daftar komoditas dijual */}
+        {kdLoading ? (
+          <p className="text-center text-muted-foreground py-8 text-sm">Memuat komoditas dijual...</p>
+        ) : (
         <div className="space-y-2">
           {kdForTU.map(kd => {
             const kom = komoditas.find(k => k.id === kd.komoditas_id);
@@ -379,7 +420,7 @@ export default function TempatUsahaPage() {
                         <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader><AlertDialogTitle>Hapus?</AlertDialogTitle><AlertDialogDescription>Data akan dihapus permanen.</AlertDialogDescription></AlertDialogHeader>
-                          <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => { deleteKomoditasDijual(kd.id); toast.success('Dihapus'); }}>Hapus</AlertDialogAction></AlertDialogFooter>
+                          <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => void handleDeleteKD(kd.id)}>Hapus</AlertDialogAction></AlertDialogFooter>
                         </AlertDialogContent>
                       </AlertDialog>
                     </div>
@@ -390,6 +431,7 @@ export default function TempatUsahaPage() {
           })}
           {kdForTU.length === 0 && <p className="text-center text-muted-foreground py-8 text-sm">Belum ada komoditas dijual.</p>}
         </div>
+        )}
       </div>
     );
   }

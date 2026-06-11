@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useData } from "@/contexts/DataContext";
-import type { HargaRutin, KelasKomoditas, SatuanDasar } from "@/types";
+import type { ApiHargaRutin } from "@/lib/harga-rutin-api";
+import type { HargaRutinReportGroup } from "@/lib/pengumpulan-data-api";
+import type { KelasKomoditas, SatuanDasar } from "@/types";
 import {
   SATUAN_DASAR_OPTIONS,
   KONVERSI_SATUAN,
@@ -69,14 +71,9 @@ type ReportMeta = {
   signatureData: string;
 };
 
-type ReportGroup = {
-  key: string;
-  tanggal: string;
-  pasarId: string;
-  enumerator: string;
-  status: "draft" | "final";
-  entries: HargaRutin[];
-};
+type HargaRutinRow = ApiHargaRutin;
+
+type ReportGroup = HargaRutinReportGroup;
 
 const getStatusStyle = (status: "draft" | "final") => {
   switch (status) {
@@ -102,17 +99,24 @@ const getKelasStyle = (kelas: KelasKomoditas) => {
 
 export default function HargaRutinPage() {
   const {
-    hargaRutin,
-    addHargaRutin,
-    updateHargaRutin,
-    deleteHargaRutin,
     pasar,
     komoditas,
     tempatUsaha,
     komoditasDijual,
     hargaPelaporan,
+    refreshPasar,
+    refreshKomoditas,
+    refreshTempatUsaha,
+    refreshKomoditasDijual,
     getKelasForKomoditasInPasar,
+    loadHargaRutinReportGroups,
+    saveHargaRutinReport,
+    deleteHargaRutinReport,
   } = useData();
+
+  const [reportGroups, setReportGroups] = useState<ReportGroup[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [view, setView] = useState<
     "dashboard" | "setup" | "input" | "review" | "detail"
@@ -135,6 +139,36 @@ export default function HargaRutinPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
 
+  const refreshPageData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        refreshPasar(),
+        refreshKomoditas(),
+        refreshTempatUsaha(),
+        refreshKomoditasDijual(),
+      ]);
+      const groups = await loadHargaRutinReportGroups();
+      setReportGroups(groups);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal memuat data",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    refreshPasar,
+    refreshKomoditas,
+    refreshTempatUsaha,
+    refreshKomoditasDijual,
+    loadHargaRutinReportGroups,
+  ]);
+
+  useEffect(() => {
+    void refreshPageData();
+  }, [refreshPageData]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
     const canvas = canvasRef.current;
@@ -144,24 +178,21 @@ export default function HargaRutinPage() {
     canvas.height = 120;
   }, [view]);
 
-  const reportGroups = useMemo<ReportGroup[]>(() => {
-    const map = new Map<string, HargaRutin[]>();
-    hargaRutin.forEach((entry) => {
-      const key = `${entry.tanggal}__${entry.pasar_id}__${entry.nama_enumerator}`;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(entry);
-    });
-
-    return Array.from(map.entries())
-      .map(([key, entries]) => {
-        const [tanggal, pasarId, enumerator] = key.split("__");
-        const status = entries.every((e) => e.status === "finalisasi")
-          ? "final"
-          : "draft";
-        return { key, tanggal, pasarId, enumerator, status, entries };
-      })
-      .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
-  }, [hargaRutin]);
+  useEffect(() => {
+    if (view !== "setup" || !meta.signatureData || !canvasRef.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const img = new Image();
+    if (!meta.signatureData.startsWith("data:")) {
+      img.crossOrigin = "anonymous";
+    }
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+    img.src = meta.signatureData;
+  }, [view, meta.signatureData]);
 
   const filteredGroups = useMemo(() => {
     return reportGroups.filter((group) => {
@@ -186,7 +217,7 @@ export default function HargaRutinPage() {
 
   const currentGroupStatus = useMemo(() => {
     if (!activeKey) return "draft" as const;
-    const group = reportGroups.find((g) => g.key === activeKey);
+    const group = reportGroups.find((g) => g.id === activeKey);
     return group?.status ?? "draft";
   }, [activeKey, reportGroups]);
 
@@ -214,25 +245,24 @@ export default function HargaRutinPage() {
     }));
   };
 
-  const buildItemsFromEntries = (entries: HargaRutin[]): ReportItem[] => {
-    const grouped = new Map<string, HargaRutin[]>();
+  const buildItemsFromEntries = (entries: HargaRutinRow[]): ReportItem[] => {
+    const grouped = new Map<string, HargaRutinRow[]>();
     entries.forEach((e) => {
-      if (!grouped.has(e.komoditas_id)) grouped.set(e.komoditas_id, []);
-      grouped.get(e.komoditas_id)!.push(e);
+      if (!grouped.has(e.id_komoditas)) grouped.set(e.id_komoditas, []);
+      grouped.get(e.id_komoditas)!.push(e);
     });
 
     return Array.from(grouped.entries()).map(([komoditasId, komEntries]) => {
       const samples = kelasOptions.map((kelas) => {
         const match = komEntries.find((e) => e.kelas_komoditas === kelas);
+        const satuanDefault =
+          komoditas.find((k) => k.id === komoditasId)?.satuan_dasar ?? "kg";
         return {
           kelas,
-          tempatUsahaId: match?.tempat_usaha_id ?? "",
-          hargaInput: match?.harga_input ?? 0,
-          jumlahInput: match?.jumlah_input ?? 1,
-          satuanInput:
-            match?.satuan_input ??
-            komoditas.find((k) => k.id === komoditasId)?.satuan_dasar ??
-            "kg",
+          tempatUsahaId: match?.id_tempat_usaha ?? "",
+          hargaInput: match?.harga ?? 0,
+          jumlahInput: 1,
+          satuanInput: satuanDefault,
         } as ReportSample;
       });
       return { komoditasId, samples };
@@ -245,24 +275,24 @@ export default function HargaRutinPage() {
   };
 
   const openEdit = (group: ReportGroup) => {
-    setActiveKey(group.key);
+    setActiveKey(group.id);
     setMeta({
       enumerator: group.enumerator,
       pasarId: group.pasarId,
       tanggal: new Date(group.tanggal),
-      signatureData: "",
+      signatureData: group.signatureData ?? "",
     });
     setItems(buildItemsFromEntries(group.entries));
     setView("input");
   };
 
   const openDetail = (group: ReportGroup) => {
-    setActiveKey(group.key);
+    setActiveKey(group.id);
     setMeta({
       enumerator: group.enumerator,
       pasarId: group.pasarId,
       tanggal: new Date(group.tanggal),
-      signatureData: "",
+      signatureData: group.signatureData ?? "",
     });
     setItems(buildItemsFromEntries(group.entries));
     setView("detail");
@@ -394,68 +424,59 @@ export default function HargaRutinPage() {
     return true;
   };
 
-  const getReportKeyForCurrent = () => {
-    if (!meta.tanggal || !meta.pasarId || !meta.enumerator) return null;
-    return `${format(meta.tanggal, "yyyy-MM-dd")}__${meta.pasarId}__${meta.enumerator}`;
-  };
+  const saveReport = async (finalize: boolean) => {
+    if (!meta.tanggal) return;
 
-  const upsertReport = (status: "dalam_proses" | "finalisasi") => {
-    const key = activeKey ?? getReportKeyForCurrent();
-    if (!key || !meta.tanggal) return;
-
-    const existing = reportGroups.find((g) => g.key === key);
-    if (existing) {
-      existing.entries.forEach((entry) => deleteHargaRutin(entry.id));
-    }
-
-    items.forEach((item) => {
-      const kom = komoditas.find((k) => k.id === item.komoditasId);
-      const satuanDasar = kom?.satuan_dasar ?? "kg";
-      item.samples.forEach((sample) => {
-        const hargaStandar = hitungHargaStandar(
-          sample.hargaInput,
-          sample.jumlahInput,
-          sample.satuanInput,
-          satuanDasar,
-        );
-        const payload = {
-          nama_enumerator: meta.enumerator,
-          tanggal: format(meta.tanggal!, "yyyy-MM-dd"),
-          pasar_id: meta.pasarId,
-          komoditas_id: item.komoditasId,
-          kelas_komoditas: sample.kelas,
-          tempat_usaha_id: sample.tempatUsahaId,
-          harga_input: sample.hargaInput,
-          jumlah_input: sample.jumlahInput,
-          satuan_input: sample.satuanInput,
-          harga: hargaStandar,
-          status,
-        } as const;
-        addHargaRutin(payload);
+    setSaving(true);
+    try {
+      await saveHargaRutinReport({
+        activeBatchId: activeKey,
+        pasarId: meta.pasarId,
+        tanggal: meta.tanggal,
+        enumerator: meta.enumerator,
+        signatureData: meta.signatureData,
+        finalize,
+        strict: finalize,
+        items,
       });
-    });
+      await refreshPageData();
+      toast.success(finalize ? "Data difinalisasi" : "Draft disimpan");
+      resetReportState();
+      setView("dashboard");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal menyimpan data",
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveDraft = () => {
     if (!validateReport(false)) return;
-    upsertReport("dalam_proses");
-    toast.success("Draft disimpan");
-    resetReportState();
-    setView("dashboard");
+    void saveReport(false);
   };
 
   const handleFinalize = () => {
     if (!validateReport(true)) return;
-    upsertReport("finalisasi");
-    toast.success("Data difinalisasi");
+    void saveReport(true);
     setFinalizeOpen(false);
-    resetReportState();
-    setView("dashboard");
   };
 
-  const handleDeleteGroup = (group: ReportGroup) => {
-    group.entries.forEach((entry) => deleteHargaRutin(entry.id));
-    toast.success("Data dihapus");
+  const handleDeleteGroup = async (group: ReportGroup) => {
+    if (group.status !== "draft") {
+      toast.error("Hanya data draft yang dapat dihapus");
+      return;
+    }
+    try {
+      await deleteHargaRutinReport(group.id);
+      await refreshPageData();
+      toast.success("Data dihapus");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal menghapus data",
+      );
+    }
   };
 
   const renderInfoRow = (label: string, value: string) => (
@@ -532,9 +553,13 @@ export default function HargaRutinPage() {
           </CardContent>
         </Card>
 
+        {loading && (
+          <p className="text-sm text-muted-foreground">Memuat data...</p>
+        )}
+
         <div className="grid gap-4">
           {filteredGroups.map((group) => (
-            <Card key={group.key} className="hover:shadow-md transition-shadow">
+            <Card key={group.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-4 flex flex-col lg:flex-row lg:items-center gap-4">
                 <div className="space-y-1">
                   <h3 className="text-lg font-semibold">
@@ -578,7 +603,7 @@ export default function HargaRutinPage() {
                       variant="ghost"
                       size="sm"
                       className="text-danger"
-                      onClick={() => handleDeleteGroup(group)}
+                      onClick={() => void handleDeleteGroup(group)}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -791,7 +816,7 @@ export default function HargaRutinPage() {
                           )?.nama ?? "-"}
                         </p>
                         <p className="text-sm">
-                          Harga input: Rp{" "}
+                          Harga standar: Rp{" "}
                           {sample.hargaInput.toLocaleString("id-ID")}
                         </p>
                       </div>
@@ -925,8 +950,8 @@ export default function HargaRutinPage() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Batal</AlertDialogCancel>
-              <AlertDialogAction onClick={handleFinalize}>
-                Ya, Finalisasi
+              <AlertDialogAction onClick={handleFinalize} disabled={saving}>
+                {saving ? "Menyimpan..." : "Ya, Finalisasi"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -1238,8 +1263,9 @@ export default function HargaRutinPage() {
             variant="outline"
             className="flex-1"
             onClick={handleSaveDraft}
+            disabled={saving}
           >
-            Simpan Draft
+            {saving ? "Menyimpan..." : "Simpan Draft"}
           </Button>
           <Button
             className="flex-1 bg-primary text-primary-foreground"
