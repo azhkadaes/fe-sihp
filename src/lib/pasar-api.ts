@@ -5,17 +5,19 @@ export interface ApiPasar {
   id: string;
   nama: string;
   alamat?: string | null;
+  longitude?: number;
+  latitude?: number;
   status: number;
 }
 
-export function mapPasarFromApi(item: ApiPasar, coords?: { longitude?: number; latitude?: number }): Pasar {
+export function mapPasarFromApi(item: ApiPasar): Pasar {
   return {
     id: item.id,
     nama: item.nama,
     alamat: item.alamat ?? '',
     is_active: item.status,
-    longitude: coords?.longitude ?? 0,
-    latitude: coords?.latitude ?? 0,
+    longitude: item.longitude ?? 0,
+    latitude: item.latitude ?? 0,
   };
 }
 
@@ -50,6 +52,8 @@ export async function createPasarApi(data: Omit<Pasar, 'id'>): Promise<Pasar> {
     body: JSON.stringify({
       nama: data.nama,
       alamat: data.alamat || undefined,
+      longitude: data.longitude,
+      latitude: data.latitude,
     }),
   });
 
@@ -62,10 +66,7 @@ export async function createPasarApi(data: Omit<Pasar, 'id'>): Promise<Pasar> {
     throw new Error('Respons server tidak valid');
   }
 
-  return mapPasarFromApi(body.data, {
-    longitude: data.longitude,
-    latitude: data.latitude,
-  });
+  return mapPasarFromApi(body.data);
 }
 
 export async function updatePasarApi(id: string, data: Partial<Pasar>): Promise<Pasar> {
@@ -73,6 +74,8 @@ export async function updatePasarApi(id: string, data: Partial<Pasar>): Promise<
   if (data.nama !== undefined) payload.nama = data.nama;
   if (data.alamat !== undefined) payload.alamat = data.alamat;
   if (data.is_active !== undefined) payload.status = data.is_active;
+  if (data.longitude !== undefined) payload.longitude = data.longitude;
+  if (data.latitude !== undefined) payload.latitude = data.latitude;
 
   const res = await apiFetch(`/v1/admin/pasar/${id}`, {
     method: 'PUT',
@@ -88,10 +91,7 @@ export async function updatePasarApi(id: string, data: Partial<Pasar>): Promise<
     throw new Error('Respons server tidak valid');
   }
 
-  return mapPasarFromApi(body.data, {
-    longitude: data.longitude,
-    latitude: data.latitude,
-  });
+  return mapPasarFromApi(body.data);
 }
 
 export async function deletePasarApi(id: string): Promise<void> {

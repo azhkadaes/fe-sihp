@@ -173,6 +173,7 @@ export default function PasarPage() {
         await createPasar(form);
         toast.success("Pasar ditambahkan");
       }
+      await refreshPasar();
       setDialogOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Gagal menyimpan pasar");

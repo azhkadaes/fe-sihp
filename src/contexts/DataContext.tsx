@@ -324,26 +324,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const createPasar = useCallback(async (p: Omit<Pasar, 'id'>): Promise<Pasar> => {
     const created = await createPasarApi(p);
-    const mapped: Pasar = {
-      ...created,
-      longitude: p.longitude,
-      latitude: p.latitude,
-    };
-    persist('pasar', setPasar, prev => [...prev, mapped]);
-    return mapped;
+    persist('pasar', setPasar, prev => [...prev, created]);
+    return created;
   }, [persist]);
 
   const updatePasar = useCallback(async (id: string, p: Partial<Pasar>): Promise<Pasar> => {
-    const existing = pasar.find(x => x.id === id);
     const updated = await updatePasarApi(id, p);
-    const mapped: Pasar = {
-      ...updated,
-      longitude: p.longitude ?? existing?.longitude ?? 0,
-      latitude: p.latitude ?? existing?.latitude ?? 0,
-    };
-    persist('pasar', setPasar, prev => prev.map(x => x.id === id ? mapped : x));
-    return mapped;
-  }, [persist, pasar]);
+    persist('pasar', setPasar, prev => prev.map(x => x.id === id ? updated : x));
+    return updated;
+  }, [persist]);
 
   const deletePasar = useCallback(async (id: string): Promise<void> => {
     await deletePasarApi(id);
