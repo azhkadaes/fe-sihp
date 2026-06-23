@@ -1,15 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import L from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
 import { useData } from "@/contexts/DataContext";
+import type { Komoditas } from "@/types";
+import {
+  fetchAllPublicKomoditas,
+  fetchAllPublicTempatUsaha,
+  fetchPublicKomoditasList,
+  fetchPublicKomoditasTrend,
+  fetchPublicPasarList,
+  fetchPublicTempatUsahaDetail,
+  type PublicKomoditasListItem,
+  type PublicPasarListItem,
+} from "@/lib/public-api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import PredictionPriceSection from "@/components/landing/PredictionPriceSection";
 import PublicNavbar from "@/components/PublicNavbar";
 import {
   Command,
@@ -65,6 +77,107 @@ type StatListItem = {
   subtitle?: string;
 };
 
+type KomoditasStatCard = {
+  komoditas: Komoditas;
+  latest: { tanggal: string; harga_rata_rata: number } | null;
+};
+
+type PasarStatCard = {
+  id: string;
+  nama: string;
+  alamat: string;
+  totalKomoditas: number;
+};
+
+type PasarKomoditasCard = {
+  komoditasId: string;
+  nama: string;
+  satuan: string;
+  gambar: string;
+  harga: number;
+  tanggal: string;
+};
+
+type TempatUsahaStatCard = {
+  id: string;
+  nama: string;
+  pasar: string;
+};
+
+type TuKomoditasCard = {
+  komoditasId: string;
+  nama: string;
+  satuan: string;
+  gambar: string;
+  harga?: number;
+  tanggal?: string;
+};
+
+type TrendCardView = {
+  komoditas: {
+    id: string;
+    nama: string;
+    satuan_dasar: string;
+  };
+  latest?: {
+    harga_rata_rata: number;
+    tanggal: string;
+  };
+};
+
+function toKomoditasStatCard(
+  item: PublicKomoditasListItem,
+): KomoditasStatCard | null {
+  if (item.harga_pelaporan_terbaru == null) return null;
+  return {
+    komoditas: {
+      id: item.id,
+      nama: item.nama,
+      satuan_dasar: item.satuan_dasar as Komoditas["satuan_dasar"],
+      gambar: item.gambar ?? "",
+    },
+    latest: {
+      tanggal: item.tanggal_pelaporan_terbaru ?? "",
+      harga_rata_rata: item.harga_pelaporan_terbaru,
+    },
+  };
+}
+
+function hasValidMapCoords(pasar: PublicPasarListItem): boolean {
+  return Math.abs(pasar.latitude) > 0.0001 && Math.abs(pasar.longitude) > 0.0001;
+}
+
+function MapFlyTo({
+  target,
+  zoom = 15,
+}: {
+  target: [number, number] | null;
+  zoom?: number;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!target) return;
+    map.flyTo(target, zoom, { duration: 0.75 });
+  }, [target, zoom, map]);
+
+  return null;
+}
+
+function toPasarKomoditasCard(
+  item: PublicKomoditasListItem,
+): PasarKomoditasCard | null {
+  if (item.harga_pelaporan_terbaru == null) return null;
+  return {
+    komoditasId: item.id,
+    nama: item.nama,
+    satuan: item.satuan_dasar,
+    gambar: item.gambar ?? "",
+    harga: item.harga_pelaporan_terbaru,
+    tanggal: item.tanggal_pelaporan_terbaru ?? "",
+  };
+}
+
 export default function LandingPage() {
   const { pasar, komoditas, tempatUsaha, komoditasDijual, hargaPelaporan } =
     useData();
@@ -76,6 +189,7 @@ export default function LandingPage() {
   const [selectedMapPasarId, setSelectedMapPasarId] = useState<string | null>(
     null,
   );
+
   // New state untuk drill-down pasar/tempat usaha di stat panel
   const [selectedPasarForDetail, setSelectedPasarForDetail] = useState<
     string | null
@@ -88,6 +202,383 @@ export default function LandingPage() {
     string[]
   >([]);
   const mapSectionRef = useRef<HTMLElement | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchRow[]>([]);
+
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [panelLoading, setPanelLoading] = useState(false);
+  const [statCounts, setStatCounts] = useState({
+    komoditas: 0,
+    pasar: 0,
+    tempatUsaha: 0,
+  });
+  const [komoditasStatCards, setKomoditasStatCards] = useState<
+    KomoditasStatCard[]
+  >([]);
+  const [pasarStatCards, setPasarStatCards] = useState<PasarStatCard[]>([]);
+  const [pasarKomoditasCards, setPasarKomoditasCards] = useState<
+    PasarKomoditasCard[]
+  >([]);
+  const [tempatUsahaStatCards, setTempatUsahaStatCards] = useState<
+    TempatUsahaStatCard[]
+  >([]);
+  const [tuKomoditasCards, setTuKomoditasCards] = useState<TuKomoditasCard[]>(
+    [],
+  );
+  const [trendOptions, setTrendOptions] = useState<PublicKomoditasListItem[]>(
+    [],
+  );
+  const [trendOptionsLoading, setTrendOptionsLoading] = useState(true);
+  const [trendSeriesMap, setTrendSeriesMap] = useState<
+    Record<string, { tanggal: string; harga: number }[]>
+  >({});
+  const [trendDataLoading, setTrendDataLoading] = useState(false);
+  const [mapPasarList, setMapPasarList] = useState<PublicPasarListItem[]>([]);
+  const [mapPasarLoading, setMapPasarLoading] = useState(false);
+  const [mapFlyTarget, setMapFlyTarget] = useState<[number, number] | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!isMapSectionVisible) return;
+
+    let cancelled = false;
+    void (async () => {
+      setMapPasarLoading(true);
+      try {
+        const { items } = await fetchPublicPasarList();
+        if (cancelled) return;
+        setMapPasarList(items.filter((item) => item.is_active === 1));
+      } catch {
+        if (!cancelled) setMapPasarList([]);
+      } finally {
+        if (!cancelled) setMapPasarLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMapSectionVisible]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      setTrendOptionsLoading(true);
+      try {
+        const { items } = await fetchAllPublicKomoditas();
+        if (cancelled) return;
+        const withPrice = items
+          .filter((item) => item.harga_pelaporan_terbaru != null)
+          .sort((a, b) =>
+            (b.tanggal_pelaporan_terbaru ?? "").localeCompare(
+              a.tanggal_pelaporan_terbaru ?? "",
+            ),
+          );
+        setTrendOptions(withPrice);
+      } catch {
+        if (!cancelled) setTrendOptions([]);
+      } finally {
+        if (!cancelled) setTrendOptionsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (trendOptions.length === 0) {
+      if (selectedTrendKomoditasIds.length !== 0) {
+        setSelectedTrendKomoditasIds([]);
+      }
+      return;
+    }
+
+    setSelectedTrendKomoditasIds((prev) => {
+      const validPrev = prev.filter((id) =>
+        trendOptions.some((item) => item.id === id),
+      );
+      if (validPrev.length > 0) return validPrev.slice(0, 4);
+      return trendOptions.slice(0, 3).map((item) => item.id);
+    });
+  }, [trendOptions]);
+
+  useEffect(() => {
+    if (selectedTrendKomoditasIds.length === 0) {
+      setTrendSeriesMap({});
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      setTrendDataLoading(true);
+      try {
+        const results = await Promise.all(
+          selectedTrendKomoditasIds.map(async (id) => {
+            const points = await fetchPublicKomoditasTrend(id, { days: 30 });
+            return {
+              id,
+              series: points.map((point) => ({
+                tanggal: point.tanggal,
+                harga: point.harga_rata_rata,
+              })),
+            };
+          }),
+        );
+        if (cancelled) return;
+        setTrendSeriesMap(
+          results.reduce<Record<string, { tanggal: string; harga: number }[]>>(
+            (acc, item) => {
+              acc[item.id] = item.series;
+              return acc;
+            },
+            {},
+          ),
+        );
+      } catch {
+        if (!cancelled) setTrendSeriesMap({});
+      } finally {
+        if (!cancelled) setTrendDataLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTrendKomoditasIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      setStatsLoading(true);
+      try {
+        const [komoditasResult, pasarResult, tempatUsahaResult] =
+          await Promise.all([
+            fetchPublicKomoditasList(),
+            fetchPublicPasarList(),
+            fetchAllPublicTempatUsaha(),
+          ]);
+        if (cancelled) return;
+        setStatCounts({
+          komoditas: komoditasResult.count,
+          pasar: pasarResult.count,
+          tempatUsaha: tempatUsahaResult.count,
+        });
+      } catch {
+        if (!cancelled) {
+          setStatCounts({ komoditas: 0, pasar: 0, tempatUsaha: 0 });
+        }
+      } finally {
+        if (!cancelled) setStatsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeStat !== "komoditas") return;
+
+    let cancelled = false;
+    void (async () => {
+      setPanelLoading(true);
+      try {
+        const { items } = await fetchAllPublicKomoditas();
+        if (cancelled) return;
+        setKomoditasStatCards(
+          items
+            .map(toKomoditasStatCard)
+            .filter((item): item is KomoditasStatCard => item !== null),
+        );
+      } catch {
+        if (!cancelled) setKomoditasStatCards([]);
+      } finally {
+        if (!cancelled) setPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStat]);
+
+  useEffect(() => {
+    if (activeStat !== "pasar" || selectedPasarForDetail) return;
+
+    let cancelled = false;
+    void (async () => {
+      setPanelLoading(true);
+      try {
+        const { items } = await fetchPublicPasarList();
+        if (!cancelled) {
+          setPasarStatCards(
+            items
+              .filter((item) => item.is_active === 1)
+              .map((item) => ({
+                id: item.id,
+                nama: item.nama,
+                alamat: item.alamat,
+                totalKomoditas: item.total_komoditas,
+              })),
+          );
+        }
+      } catch {
+        if (!cancelled) setPasarStatCards([]);
+      } finally {
+        if (!cancelled) setPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStat, selectedPasarForDetail]);
+
+  useEffect(() => {
+    if (!selectedPasarForDetail) {
+      setPasarKomoditasCards([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      setPanelLoading(true);
+      try {
+        const { items } = await fetchAllPublicKomoditas({
+          id_pasar: selectedPasarForDetail,
+        });
+        if (cancelled) return;
+        setPasarKomoditasCards(
+          items
+            .map(toPasarKomoditasCard)
+            .filter((item): item is PasarKomoditasCard => item !== null),
+        );
+      } catch {
+        if (!cancelled) setPasarKomoditasCards([]);
+      } finally {
+        if (!cancelled) setPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPasarForDetail]);
+
+  useEffect(() => {
+    if (activeStat !== "tempatUsaha" || selectedTempatUsahaForDetail) return;
+
+    let cancelled = false;
+    void (async () => {
+      setPanelLoading(true);
+      try {
+        const { items } = await fetchAllPublicTempatUsaha();
+        if (cancelled) return;
+        setTempatUsahaStatCards(
+          items.map((item) => ({
+            id: item.id,
+            nama: item.nama,
+            pasar: item.pasar_nama,
+          })),
+        );
+      } catch {
+        if (!cancelled) setTempatUsahaStatCards([]);
+      } finally {
+        if (!cancelled) setPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeStat, selectedTempatUsahaForDetail]);
+
+  useEffect(() => {
+    if (!selectedTempatUsahaForDetail) {
+      setTuKomoditasCards([]);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      setPanelLoading(true);
+      try {
+        const detail = await fetchPublicTempatUsahaDetail(
+          selectedTempatUsahaForDetail,
+        );
+        if (cancelled) return;
+        setTuKomoditasCards(
+          detail.komoditas.map((item) => ({
+            komoditasId: item.id,
+            nama: item.nama,
+            satuan: item.satuan ?? "kg",
+            gambar: item.gambar_url ?? "",
+            harga: item.latest.harga_rata_rata ?? undefined,
+            tanggal: item.latest.tanggal ?? undefined,
+          })),
+        );
+      } catch {
+        if (!cancelled) setTuKomoditasCards([]);
+      } finally {
+        if (!cancelled) setPanelLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTempatUsahaForDetail]);
+
+  useEffect(() => {
+    const name = query.trim();
+    if (!name) {
+      setSearchResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      const base =
+        import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8080";
+      try {
+        const res = await fetch(
+          `${base}/v1/public/komoditas?nama=${encodeURIComponent(name)}&limit=8`,
+        );
+        const body = await res.json();
+        if (cancelled) return;
+        const list = body.data ?? [];
+        setSearchResults(
+          list.map(
+            (k: {
+              id: string;
+              nama: string;
+              satuan_dasar?: string;
+              harga_pelaporan_terbaru?: number;
+            }) => ({
+              key: k.id,
+              title: k.nama,
+              subtitle: "Komoditas",
+              unit: k.satuan_dasar,
+              price: k.harga_pelaporan_terbaru,
+              link: `/public/komoditas/${k.id}`,
+            }),
+          ),
+        );
+      } catch {
+        if (!cancelled) setSearchResults([]);
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   const getStaggerStyle = (index: number, baseDelay = 0) => ({
     animationDelay: `${baseDelay + index * 80}ms`,
@@ -193,21 +684,21 @@ export default function LandingPage() {
     {
       key: "komoditas" as const,
       label: "Komoditas",
-      value: komoditas.length,
+      value: statCounts.komoditas,
       icon: Package,
       helper: "Lihat daftar komoditas terdaftar",
     },
     {
       key: "pasar" as const,
       label: "Pasar",
-      value: pasar.filter((p) => p.is_active).length,
+      value: statCounts.pasar,
       icon: Store,
       helper: "Lihat pasar aktif terdaftar",
     },
     {
       key: "tempatUsaha" as const,
       label: "Tempat Usaha",
-      value: tempatUsaha.filter((t) => t.is_active).length,
+      value: statCounts.tempatUsaha,
       icon: Building2,
       helper: "Lihat tempat usaha aktif",
     },
@@ -307,57 +798,38 @@ export default function LandingPage() {
     });
   }, [komoditas, hargaPelaporan]);
 
-  const trendCards = useMemo(() => {
-    return summaryCards
-      .filter(({ latest }) => latest)
-      .sort((a, b) => b.latest!.tanggal.localeCompare(a.latest!.tanggal));
-  }, [summaryCards]);
-
-  useEffect(() => {
-    if (trendCards.length === 0) {
-      if (selectedTrendKomoditasIds.length !== 0) {
-        setSelectedTrendKomoditasIds([]);
-      }
-      return;
-    }
-
-    setSelectedTrendKomoditasIds((prev) => {
-      const validPrev = prev.filter((id) =>
-        trendCards.some((card) => card.komoditas.id === id),
-      );
-      if (validPrev.length > 0) return validPrev.slice(0, 4);
-      return trendCards.slice(0, 3).map((card) => card.komoditas.id);
-    });
-  }, [trendCards]);
+  const trendCards = useMemo<TrendCardView[]>(() => {
+    return trendOptions.map((item) => ({
+      komoditas: {
+        id: item.id,
+        nama: item.nama,
+        satuan_dasar: item.satuan_dasar,
+      },
+      latest:
+        item.harga_pelaporan_terbaru != null
+          ? {
+              harga_rata_rata: item.harga_pelaporan_terbaru,
+              tanggal: item.tanggal_pelaporan_terbaru ?? "",
+            }
+          : undefined,
+    }));
+  }, [trendOptions]);
 
   const selectedTrendCards = useMemo(() => {
-    const ids =
-      selectedTrendKomoditasIds.length > 0
-        ? selectedTrendKomoditasIds
-        : trendCards.slice(0, 3).map((card) => card.komoditas.id);
-
-    return ids
+    return selectedTrendKomoditasIds
       .map((id) => trendCards.find((card) => card.komoditas.id === id))
-      .filter((card): card is NonNullable<typeof card> => card !== undefined)
+      .filter((card): card is TrendCardView => card !== undefined)
       .slice(0, 4);
   }, [selectedTrendKomoditasIds, trendCards]);
 
   const selectedTrendSeries = useMemo(() => {
-    return selectedTrendCards.map((card) => {
-      const series = hargaPelaporan
-        .filter((item) => item.komoditas_id === card.komoditas.id)
-        .sort((a, b) => a.tanggal.localeCompare(b.tanggal))
-        .map((item) => ({ tanggal: item.tanggal, harga: item.harga_rata_rata }))
-        .slice(-8);
-
-      return {
-        id: card.komoditas.id,
-        nama: card.komoditas.nama,
-        satuan: card.komoditas.satuan_dasar,
-        series,
-      };
-    });
-  }, [hargaPelaporan, selectedTrendCards]);
+    return selectedTrendCards.map((card) => ({
+      id: card.komoditas.id,
+      nama: card.komoditas.nama,
+      satuan: card.komoditas.satuan_dasar,
+      series: trendSeriesMap[card.komoditas.id] ?? [],
+    }));
+  }, [selectedTrendCards, trendSeriesMap]);
 
   const trendChartDates = useMemo(() => {
     const dates = new Set<string>();
@@ -608,25 +1080,6 @@ export default function LandingPage() {
     return [];
   }, []);
 
-  const searchResults = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return [] as SearchRow[];
-
-    return komoditas
-      .filter((k) => k.nama.toLowerCase().includes(normalized))
-      .map((k) => {
-        const latest = latestByKomoditas[k.id];
-        return {
-          key: `kom-${k.id}`,
-          title: k.nama,
-          subtitle: latest ? `Update ${latest.tanggal}` : "Belum ada data",
-          price: latest?.harga_rata_rata,
-          unit: k.satuan_dasar,
-        };
-      })
-      .slice(0, 8);
-  }, [query, komoditas, latestByKomoditas]);
-
   const heroSlides = [
     {
       title: "Harga Komoditas",
@@ -646,53 +1099,30 @@ export default function LandingPage() {
   ];
 
   const mapCenter = useMemo(() => {
-    const first = pasar.find((p) => p.is_active && p.latitude && p.longitude);
+    const first = mapPasarList.find((p) => hasValidMapCoords(p));
     if (first) return [first.latitude, first.longitude] as [number, number];
     return [-6.9147, 107.5731] as [number, number];
-  }, [pasar]);
+  }, [mapPasarList]);
 
   const activePasarWithCoords = useMemo(() => {
-    return pasar
-      .filter((p) => p.is_active && p.latitude && p.longitude)
+    return mapPasarList
+      .filter((p) => hasValidMapCoords(p))
       .slice()
       .sort((a, b) => a.nama.localeCompare(b.nama));
-  }, [pasar]);
+  }, [mapPasarList]);
 
   const pasarStackCards = useMemo(() => {
-    return activePasarWithCoords.map((p) => {
-      const tus = tempatUsaha.filter((t) => t.pasar_id === p.id && t.is_active);
-      const tuIds = new Set(tus.map((t) => t.id));
-      const activeKomoditasIds = new Set(
-        komoditasDijual
-          .filter((kd) => kd.is_active && tuIds.has(kd.tempat_usaha_id))
-          .map((kd) => kd.komoditas_id),
-      );
-
-      return {
-        ...p,
-        totalTempatUsaha: tus.length,
-        totalKomoditas: activeKomoditasIds.size,
-      };
-    });
-  }, [activePasarWithCoords, tempatUsaha, komoditasDijual]);
-
-  const selectedMapPasar = useMemo(() => {
-    if (!selectedMapPasarId) return null;
-    return (
-      activePasarWithCoords.find((p) => p.id === selectedMapPasarId) ?? null
-    );
-  }, [selectedMapPasarId, activePasarWithCoords]);
-
-  const selectedMapPasarDetails = useMemo(() => {
-    if (!selectedMapPasar) return [];
-
-    const tus = tempatUsaha
-      .filter((t) => t.pasar_id === selectedMapPasar.id && t.is_active)
+    return mapPasarList
       .slice()
       .sort((a, b) => a.nama.localeCompare(b.nama));
+  }, [mapPasarList]);
 
-    return tus;
-  }, [selectedMapPasar, tempatUsaha]);
+  const focusMapPasar = (pasar: PublicPasarListItem) => {
+    setSelectedMapPasarId(pasar.id);
+    if (hasValidMapCoords(pasar)) {
+      setMapFlyTarget([pasar.latitude, pasar.longitude]);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground animate-fade-in">
@@ -780,7 +1210,7 @@ export default function LandingPage() {
                 ) : (
                   <Card>
                     <CardContent className="p-4 text-sm text-muted-foreground">
-                      Tidak ada data untuk kata kunci tersebut.
+                      {query.trim() ? "Memuat..." : "Tidak ada data untuk kata kunci tersebut."}
                     </CardContent>
                   </Card>
                 )}
@@ -848,7 +1278,9 @@ export default function LandingPage() {
                     <s.icon className="h-5 w-5" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-2xl font-semibold">{s.value}</p>
+                    <p className="text-2xl font-semibold">
+                      {statsLoading ? "—" : s.value}
+                    </p>
                     <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
                       {s.label}
                     </p>
@@ -884,16 +1316,18 @@ export default function LandingPage() {
                           : "Daftar Tempat Usaha"}
                     </p>
                     <h3 className="text-lg font-semibold">
-                      {activeStat === "komoditas"
-                        ? overallCards.length
-                        : activeStat === "pasar"
-                          ? selectedPasarForDetail
-                            ? komoditasPerPasarCards.length
-                            : allPasarDetailCards.length
-                          : selectedTempatUsahaForDetail
-                            ? komoditasPerTempatUsahaCards.length
-                            : allTempatUsahaDetailCards.length}{" "}
-                      item
+                      {panelLoading
+                        ? "Memuat..."
+                        : activeStat === "komoditas"
+                          ? komoditasStatCards.length
+                          : activeStat === "pasar"
+                            ? selectedPasarForDetail
+                              ? pasarKomoditasCards.length
+                              : pasarStatCards.length
+                            : selectedTempatUsahaForDetail
+                              ? tuKomoditasCards.length
+                              : tempatUsahaStatCards.length}{" "}
+                      {!panelLoading && "item"}
                     </h3>
                   </div>
                   {(selectedPasarForDetail || selectedTempatUsahaForDetail) && (
@@ -910,59 +1344,60 @@ export default function LandingPage() {
                   )}
                 </div>
 
-                {/* ===== KOMODITAS CARDS ===== */}
+                {/* ===== KOMODITAS CARD ===== */}
                 {activeStat === "komoditas" && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {overallCards.filter((c) => c.latest).length > 0 ? (
-                      overallCards
-                        .filter((c) => c.latest)
-                        .map((card, index) => (
-                          <Card
-                            key={card.komoditas.id}
-                            onClick={() =>
-                              navigate(`/public/komoditas/${card.komoditas.id}`)
-                            }
-                            className="h-full cursor-pointer hover:shadow-lg interactive-smooth hover:-translate-y-0.5 hover-tilt animate-fade-up card-enter"
-                            style={getStaggerStyle(index, 120)}
-                          >
-                            <CardContent className="p-4 space-y-3">
-                              <div className="flex items-center gap-3">
-                                <div className="flex-1 min-w-0 space-y-1.5">
-                                  <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                    {card.komoditas.satuan_dasar}
-                                  </p>
-                                  <h3 className="font-semibold truncate">
-                                    {card.komoditas.nama}
-                                  </h3>
-                                  <p className="text-primary font-semibold">
-                                    Rp{" "}
-                                    {card.latest!.harga_rata_rata.toLocaleString(
-                                      "id-ID",
-                                    )}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Update{" "}
-                                    {formatTanggal(card.latest!.tanggal)}
-                                  </p>
-                                </div>
-                                <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border bg-muted/30">
-                                  {card.komoditas.gambar ? (
-                                    <img
-                                      src={card.komoditas.gambar}
-                                      alt={card.komoditas.nama}
-                                      className="h-full w-full object-cover"
-                                      loading="lazy"
-                                    />
-                                  ) : (
-                                    <div className="h-full w-full flex items-center justify-center text-muted-foreground">
-                                      <Package className="h-5 w-5" />
-                                    </div>
+                    {panelLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Memuat data komoditas...
+                      </p>
+                    ) : komoditasStatCards.length > 0 ? (
+                      komoditasStatCards.map((card, index) => (
+                        <Card
+                          key={card.komoditas.id}
+                          onClick={() =>
+                            navigate(`/public/komoditas/${card.komoditas.id}`)
+                          }
+                          className="h-full cursor-pointer hover:shadow-lg interactive-smooth hover:-translate-y-0.5 hover-tilt animate-fade-up card-enter"
+                          style={getStaggerStyle(index, 120)}
+                        >
+                          <CardContent className="p-4 space-y-3">
+                            <div className="flex items-center gap-3">
+                              <div className="flex-1 min-w-0 space-y-1.5">
+                                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+                                  {card.komoditas.satuan_dasar}
+                                </p>
+                                <h3 className="font-semibold truncate">
+                                  {card.komoditas.nama}
+                                </h3>
+                                <p className="text-primary font-semibold">
+                                  Rp{" "}
+                                  {card.latest!.harga_rata_rata.toLocaleString(
+                                    "id-ID",
                                   )}
-                                </div>
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Update {formatTanggal(card.latest!.tanggal)}
+                                </p>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))
+                              <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden border bg-muted/30">
+                                {card.komoditas.gambar ? (
+                                  <img
+                                    src={card.komoditas.gambar}
+                                    alt={card.komoditas.nama}
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center text-muted-foreground">
+                                    <Package className="h-5 w-5" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))
                     ) : (
                       <p className="text-sm text-muted-foreground">
                         Belum ada data harga komoditas.
@@ -974,8 +1409,12 @@ export default function LandingPage() {
                 {/* ===== PASAR CARDS ===== */}
                 {activeStat === "pasar" && !selectedPasarForDetail && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {allPasarDetailCards.length > 0 ? (
-                      allPasarDetailCards.map((pasar, index) => (
+                    {panelLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Memuat data pasar...
+                      </p>
+                    ) : pasarStatCards.length > 0 ? (
+                      pasarStatCards.map((pasar, index) => (
                         <Card
                           key={pasar.id}
                           onClick={() => setSelectedPasarForDetail(pasar.id)}
@@ -1013,8 +1452,12 @@ export default function LandingPage() {
                 {/* ===== KOMODITAS PER PASAR ===== */}
                 {activeStat === "pasar" && selectedPasarForDetail && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {komoditasPerPasarCards.length > 0 ? (
-                      komoditasPerPasarCards.map((card, index) => (
+                    {panelLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Memuat komoditas pasar...
+                      </p>
+                    ) : pasarKomoditasCards.length > 0 ? (
+                      pasarKomoditasCards.map((card, index) => (
                         <Card
                           key={card.komoditasId}
                           onClick={() =>
@@ -1070,8 +1513,12 @@ export default function LandingPage() {
                 {/* ===== TEMPAT USAHA CARDS ===== */}
                 {activeStat === "tempatUsaha" && !selectedTempatUsahaForDetail && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {allTempatUsahaDetailCards.length > 0 ? (
-                      allTempatUsahaDetailCards.map((tu, index) => (
+                    {panelLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Memuat data tempat usaha...
+                      </p>
+                    ) : tempatUsahaStatCards.length > 0 ? (
+                      tempatUsahaStatCards.map((tu, index) => (
                         <Card
                           key={tu.id}
                           onClick={() =>
@@ -1083,7 +1530,7 @@ export default function LandingPage() {
                           <CardContent className="p-4 space-y-3">
                             <div className="space-y-1.5">
                               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                                {tu.pasar} • {tu.totalKomoditas} Komoditas
+                                {tu.pasar}
                               </p>
                               <h3 className="font-semibold truncate">
                                 {tu.nama}
@@ -1103,8 +1550,12 @@ export default function LandingPage() {
                 {/* ===== KOMODITAS PER TEMPAT USAHA ===== */}
                 {activeStat === "tempatUsaha" && selectedTempatUsahaForDetail && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {komoditasPerTempatUsahaCards.length > 0 ? (
-                      komoditasPerTempatUsahaCards.map((card, index) => (
+                    {panelLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        Memuat komoditas tempat usaha...
+                      </p>
+                    ) : tuKomoditasCards.length > 0 ? (
+                      tuKomoditasCards.map((card, index) => (
                         <Card
                           key={card.komoditasId}
                           onClick={() =>
@@ -1167,6 +1618,8 @@ export default function LandingPage() {
           )}
         </div>
       </section>
+
+      <PredictionPriceSection />
 
       {/* visualisasi harga terkini */}
       {/* <section
@@ -1318,7 +1771,11 @@ export default function LandingPage() {
                     <Command>
                       <CommandInput placeholder="Cari komoditas untuk grafik..." />
                       <CommandList>
-                        <CommandEmpty>Komoditas tidak ditemukan.</CommandEmpty>
+                        <CommandEmpty>
+                          {trendOptionsLoading
+                            ? "Memuat komoditas..."
+                            : "Komoditas tidak ditemukan."}
+                        </CommandEmpty>
                         <CommandGroup>
                           {trendCards.map((card, index) => {
                             const isSelected =
@@ -1406,9 +1863,10 @@ export default function LandingPage() {
                   className="h-8 px-3 text-xs"
                   onClick={() =>
                     setSelectedTrendKomoditasIds(
-                      trendCards.slice(0, 3).map((card) => card.komoditas.id),
+                      trendOptions.slice(0, 3).map((item) => item.id),
                     )
                   }
+                  disabled={trendOptions.length === 0}
                 >
                   Reset
                 </Button>
@@ -1430,7 +1888,11 @@ export default function LandingPage() {
               </div>
 
               <div className="h-[250px] overflow-hidden rounded-2xl border border-border/70 bg-background sm:h-[300px] lg:h-[340px]">
-                {trendChartData.length > 0 && selectedTrendSeries.length > 0 ? (
+                {trendDataLoading ? (
+                  <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
+                    Memuat grafik tren harga...
+                  </div>
+                ) : trendChartData.length > 0 && selectedTrendSeries.length > 0 ? (
                   <ChartContainer
                     config={trendChartConfig}
                     className="h-full w-full p-2 sm:p-3"
@@ -1521,13 +1983,18 @@ export default function LandingPage() {
                   </ChartContainer>
                 ) : (
                   <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-                    Pilih komoditas untuk melihat grafik.
+                    {trendOptionsLoading
+                      ? "Memuat daftar komoditas..."
+                      : trendOptions.length === 0
+                        ? "Belum ada data harga komoditas."
+                        : "Pilih komoditas untuk melihat grafik."}
                   </div>
                 )}
               </div>
 
               <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-                {selectedTrendSeries.map((seriesItem, seriesIndex) => {
+                {!trendDataLoading &&
+                  selectedTrendSeries.map((seriesItem, seriesIndex) => {
                   const latestPoint =
                     seriesItem.series[seriesItem.series.length - 1];
                   const firstPoint = seriesItem.series[0];
@@ -1705,7 +2172,7 @@ export default function LandingPage() {
               </h2>
             </div>
             <div className="text-xs text-muted-foreground">
-              Klik marker untuk detail pasar
+              Klik kartu pasar untuk fokus peta
             </div>
           </div>
 
@@ -1725,13 +2192,14 @@ export default function LandingPage() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
+                  <MapFlyTo target={mapFlyTarget} />
                   {activePasarWithCoords.map((p) => (
                     <Marker
                       key={p.id}
                       position={[p.latitude, p.longitude]}
                       icon={marketMarkerIcon}
                       eventHandlers={{
-                        click: () => setSelectedMapPasarId(p.id),
+                        click: () => focusMapPasar(p),
                       }}
                     >
                       <Popup>
@@ -1760,120 +2228,50 @@ export default function LandingPage() {
             </div>
 
             <div className="space-y-3 max-h-full pr-1">
-              {!selectedMapPasar &&
-                pasarStackCards.map((p, index) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setSelectedMapPasarId(p.id)}
-                    className="w-full text-left rounded-2xl border bg-card p-4 shadow-sm interactive-smooth hover:shadow-md hover-tilt animate-fade-up hover:border-primary/40"
-                    style={getStaggerStyle(index, 280)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold">{p.nama}</p>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {p.alamat}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          {p.totalTempatUsaha} tempat usaha • {p.totalKomoditas}{" "}
-                          komoditas
-                        </p>
-                      </div>
-                      <div className="h-10 w-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
-                        <MapPin className="h-5 w-5" />
-                      </div>
-                    </div>
-                  </button>
-                ))}
-
-              {selectedMapPasar && (
-                <Card
-                  className="border-primary/30 panel-smooth animate-fade-up"
-                  style={{ animationDelay: "280ms" }}
+              {mapPasarLoading && (
+                <p className="text-sm text-muted-foreground px-1">
+                  Memuat data pasar...
+                </p>
+              )}
+              {!mapPasarLoading && pasarStackCards.length === 0 && (
+                <p className="text-sm text-muted-foreground px-1">
+                  Belum ada pasar aktif.
+                </p>
+              )}
+              {pasarStackCards.map((p, index) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => focusMapPasar(p)}
+                  className={`w-full text-left rounded-2xl border bg-card p-4 shadow-sm interactive-smooth hover:shadow-md hover-tilt animate-fade-up hover:border-primary/40 ${
+                    selectedMapPasarId === p.id
+                      ? "border-primary/60 ring-1 ring-primary/30"
+                      : ""
+                  }`}
+                  style={getStaggerStyle(index, 280)}
                 >
-                  <CardContent className="p-4 space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
-                          Pasar Terpilih
-                        </p>
-                        <h3 className="font-semibold text-lg">
-                          {selectedMapPasar.nama}
-                        </h3>
-                        <p className="text-sm text-muted-foreground">
-                          {selectedMapPasar.alamat}
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedMapPasarId(null)}
-                      >
-                        Kembali
-                      </Button>
-                    </div>
-
-                    <div className="space-y-3">
-                      {selectedMapPasarDetails.length === 0 && (
-                        <p className="text-sm text-muted-foreground">
-                          Belum ada tempat usaha aktif.
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold">{p.nama}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-2">
+                        {p.alamat}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {p.total_tempat_usaha} tempat usaha •{" "}
+                        {p.total_komoditas} komoditas
+                      </p>
+                      {!hasValidMapCoords(p) && (
+                        <p className="text-xs text-amber-600 mt-1">
+                          Koordinat belum diatur
                         </p>
                       )}
-
-                      {selectedMapPasarDetails.map((tu, index) => (
-                        <button
-                          key={tu.id}
-                          onClick={() =>
-                            navigate("/public/komoditas", {
-                              state: { filterTempatUsahaId: tu.id },
-                            })
-                          }
-                          className="rounded-lg border p-2.5 space-y-2 interactive-smooth hover:border-primary/50 hover:shadow-md hover:bg-accent/5 animate-fade-up card-enter text-left w-full transition-colors"
-                          style={getStaggerStyle(index, 320)}
-                        >
-                          <div>
-                            <p className="font-semibold text-sm leading-tight">
-                              {tu.nama}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              {selectedMapPasar.nama}
-                            </p>
-                          </div>
-
-                          <div className="space-y-1 text-xs">
-                            {tu.nama_pemilik && (
-                              <p className="text-foreground">
-                                <span className="text-muted-foreground">
-                                  Pemilik:{" "}
-                                </span>
-                                {tu.nama_pemilik}
-                              </p>
-                            )}
-                            {tu.nomor_narahubung && (
-                              <p className="text-foreground">
-                                <span className="text-muted-foreground">
-                                  HP:{" "}
-                                </span>
-                                <span className="text-primary font-medium">
-                                  {tu.nomor_narahubung}
-                                </span>
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between pt-0.5">
-                            <span className="text-[11px] text-muted-foreground">
-                              Klik untuk lihat komoditas
-                            </span>
-                            <ArrowRight className="h-3 w-3 text-primary" />
-                          </div>
-                        </button>
-                      ))}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <div className="h-10 w-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center">
+                      <MapPin className="h-5 w-5" />
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         </div>

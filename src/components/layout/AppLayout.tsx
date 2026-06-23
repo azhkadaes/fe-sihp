@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Link, useLocation, Outlet } from "react-router-dom";
+import { Link, useLocation, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,7 @@ export default function AppLayout() {
   const { logout } = useAuth();
   const location = useLocation();
   const isMobile = useIsMobile();
+  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -98,6 +99,7 @@ export default function AppLayout() {
                           onClick={() => {
                             logout();
                             setMenuOpen(false);
+                            navigate("/");
                           }}
                           className="flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 w-full"
                         >
@@ -174,7 +176,10 @@ export default function AppLayout() {
         {/* Footer: Theme toggle + Logout */}
         <div className="border-t p-2 space-y-1">
           <button
-            onClick={logout}
+            onClick={() => {
+              logout();
+              navigate("/");
+            }}
             title={collapsed ? "Keluar" : undefined}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-destructive hover:bg-destructive/10 w-full transition-colors",

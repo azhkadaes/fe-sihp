@@ -10,6 +10,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner';
 import { Lock, Mail } from 'lucide-react';
 
+const demoEmail = import.meta.env.VITE_DEMO_EMAIL || 'admin@ikn.com';
+const demoPassword = import.meta.env.VITE_DEMO_PASSWORD || 'ikn123';
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -21,12 +24,12 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const ok = await login(email, password);
-    if (ok) {
+    const result = await login(email, password);
+    if (result.ok) {
       toast.success('Login berhasil!');
       navigate(isMobile ? '/harga-rutin' : '/dashboard');
     } else {
-      toast.error('Email atau password salah. Gunakan admin@admin.com / admin123');
+      toast.error(result.message || 'Email atau password salah.');
     }
     setLoading(false);
   };
@@ -53,7 +56,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@admin.com"
+                  placeholder={demoEmail}
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   className="pl-10"
@@ -84,7 +87,7 @@ export default function LoginPage() {
               {loading ? 'Memproses...' : 'Masuk'}
             </Button>
             <p className="text-xs text-center text-muted-foreground mt-4">
-              Demo: admin@admin.com / admin123
+              Gunakan akun admin: {demoEmail} / {demoPassword}
             </p>
           </form>
         </CardContent>

@@ -71,21 +71,30 @@ export const POLA_DISTRIBUSI_OPTIONS = [
 ];
 
 /** Opsi satuan periode waktu */
-export type PeriodeUnit = 'hari' | 'minggu' | '2minggu' | 'bulan';
+export type PeriodeUnit = 'hari' | 'minggu' | 'bulan';
 export const PERIODE_UNIT_OPTIONS: { value: PeriodeUnit; label: string }[] = [
   { value: 'hari', label: 'Hari' },
   { value: 'minggu', label: 'Minggu' },
-  { value: '2minggu', label: '2 Minggu' },
   { value: 'bulan', label: 'Bulan' },
 ];
 
-/** Faktor konversi periode ke hari (untuk standardisasi) */
+/** Faktor konversi periode ke hari (untuk standardisasi stok) */
 export const PERIODE_TO_DAYS: Record<PeriodeUnit, number> = {
   hari: 1,
   minggu: 7,
-  '2minggu': 14,
   bulan: 30,
 };
+
+/** Hitung standardized stock per hari dari form input */
+export function calcStandardizedStockPerDay(
+  nilaiStok: number,
+  nilaiPeriode: number,
+  periodeUnit: PeriodeUnit,
+): number {
+  const totalDays = nilaiPeriode * PERIODE_TO_DAYS[periodeUnit];
+  if (totalDays <= 0) return 0;
+  return Math.round((nilaiStok / totalDays) * 100) / 100;
+}
 
 export interface KomoditasDijual {
   id: string;
@@ -104,10 +113,9 @@ export interface KomoditasDijual {
   pola_distribusi: string;
   /** Stok per hari = nilai_stok / (nilai_periode * PERIODE_TO_DAYS[periode_unit]) */
   standardized_stock_periode: number;
+  kelas_komoditas?: KelasKomoditas;
   is_active: boolean;
 }
-
-export type KelasKomoditas = 'besar' | 'menengah' | 'kecil';
 
 export interface HargaRutin {
   id: string;

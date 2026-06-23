@@ -4,6 +4,8 @@
  * dan kartu komoditas dengan tren harga.
  */
 import { useData } from "@/contexts/DataContext";
+import { loadHargaPelaporanPageData } from "@/lib/harga-pelaporan-api";
+import type { HargaPelaporan } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   TrendingUp,
@@ -14,8 +16,9 @@ import {
   Info,
   Store,
   Building2,
+  Loader2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -32,9 +35,40 @@ import {
 import { toast } from "sonner";
 
 export default function DashboardPage() {
-  const { komoditas, pasar, tempatUsaha, hargaPelaporan } = useData();
+  const {
+    komoditas,
+    pasar,
+    tempatUsaha,
+    refreshPasar,
+    refreshKomoditas,
+    refreshTempatUsaha,
+  } = useData();
+  const [hargaPelaporan, setHargaPelaporan] = useState<HargaPelaporan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedPasar, setSelectedPasar] = useState<string>("all");
-  const [selectedTrendIds, setSelectedTrendIds] = useState<string[]>([]);
+
+  const refreshPageData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([
+        refreshPasar(),
+        refreshKomoditas(),
+        refreshTempatUsaha(),
+      ]);
+      const data = await loadHargaPelaporanPageData();
+      setHargaPelaporan(data);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal memuat data dashboard",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [refreshPasar, refreshKomoditas, refreshTempatUsaha]);
+
+  useEffect(() => {
+    void refreshPageData();
+  }, [refreshPageData]);
 
   /* ===== Statistik ringkasan ===== */
   const activePasarCount = useMemo(() => {
@@ -153,6 +187,14 @@ export default function DashboardPage() {
   };
 
   /* ===== Render ===== */
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Header & Filter */}

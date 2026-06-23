@@ -4,9 +4,35 @@
  * Komoditas Dijual, Harga Rutin, dan Harga Pelaporan.
  * Data disimpan di localStorage untuk persistensi prototype.
  */
-import React, { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react';
 import type { Pasar, Komoditas, TempatUsaha, KomoditasDijual, HargaRutin, HargaPelaporan, KelasKomoditas, PeriodeUnit } from '@/types';
-import { PERIODE_TO_DAYS } from '@/types';
+import { calcStandardizedStockPerDay } from '@/types';
+import {
+  fetchKomoditasList,
+  createKomoditasApi,
+  updateKomoditasApi,
+  uploadKomoditasGambarApi,
+} from '@/lib/komoditas-api';
+import {
+  fetchPasarList,
+  createPasarApi,
+  updatePasarApi,
+  deletePasarApi,
+} from '@/lib/pasar-api';
+import {
+  fetchTempatUsahaList,
+  createTempatUsahaApi,
+  updateTempatUsahaApi,
+  deleteTempatUsahaApi,
+} from '@/lib/tempat-usaha-api';
+import {
+  fetchKomoditasDijualList,
+  createKomoditasDijualApi,
+  updateKomoditasDijualApi,
+  deleteKomoditasDijualApi,
+} from '@/lib/komoditas-dijual-api';
+import { getAccessToken } from '@/lib/api';
+import { hitungHargaStandar } from '@/types';
 
 /* ===== Helper Functions ===== */
 
@@ -31,6 +57,8 @@ function uid() { return crypto.randomUUID(); }
 interface DataContextType {
   refreshPasar: () => Promise<void>;
   refreshKomoditas: () => Promise<void>;
+  refreshTempatUsaha: () => Promise<void>;
+  refreshKomoditasDijual: (tempatUsahaId?: string) => Promise<void>;
   pasar: Pasar[]; setPasar: React.Dispatch<React.SetStateAction<Pasar[]>>;
   komoditas: Komoditas[]; setKomoditas: React.Dispatch<React.SetStateAction<Komoditas[]>>;
   tempatUsaha: TempatUsaha[]; setTempatUsaha: React.Dispatch<React.SetStateAction<TempatUsaha[]>>;
@@ -38,21 +66,48 @@ interface DataContextType {
   hargaRutin: HargaRutin[]; setHargaRutin: React.Dispatch<React.SetStateAction<HargaRutin[]>>;
   hargaPelaporan: HargaPelaporan[];
   addPasar: (p: Omit<Pasar, 'id'>) => void;
-  createPasar: (p: Omit<Pasar, 'id'>) => Promise<Pasar | null>;
-  updatePasar: (id: string, p: Partial<Pasar>) => void;
-  deletePasar: (id: string) => void;
+  createPasar: (p: Omit<Pasar, 'id'>) => Promise<Pasar>;
+  updatePasar: (id: string, p: Partial<Pasar>) => Promise<Pasar>;
+  deletePasar: (id: string) => Promise<void>;
+  createPasar: (p: Omit<Pasar, 'id'>) => Promise<Pasar>;
+  updatePasar: (id: string, p: Partial<Pasar>) => Promise<Pasar>;
+  deletePasar: (id: string) => Promise<void>;
   addKomoditas: (k: Omit<Komoditas, 'id'>) => void;
-  updateKomoditas: (id: string, k: Partial<Komoditas>) => void;
+  createKomoditas: (k: Omit<Komoditas, 'id'>, imageFile?: File | null) => Promise<Komoditas>;
+  updateKomoditas: (id: string, k: Partial<Komoditas>, imageFile?: File | null) => Promise<Komoditas>;
   deleteKomoditas: (id: string) => void;
   addTempatUsaha: (t: Omit<TempatUsaha, 'id'>) => void;
-  updateTempatUsaha: (id: string, t: Partial<TempatUsaha>) => void;
-  deleteTempatUsaha: (id: string) => void;
+  createTempatUsaha: (t: Omit<TempatUsaha, 'id'>) => Promise<TempatUsaha>;
+  updateTempatUsaha: (id: string, t: Partial<TempatUsaha>) => Promise<TempatUsaha>;
+  deleteTempatUsaha: (id: string) => Promise<void>;
   addKomoditasDijual: (k: Omit<KomoditasDijual, 'id'>) => void;
-  updateKomoditasDijual: (id: string, k: Partial<KomoditasDijual>) => void;
-  deleteKomoditasDijual: (id: string) => void;
+  createKomoditasDijual: (k: Omit<KomoditasDijual, 'id'>) => Promise<KomoditasDijual>;
+  updateKomoditasDijual: (id: string, k: Partial<KomoditasDijual>) => Promise<KomoditasDijual>;
+  deleteKomoditasDijual: (id: string) => Promise<void>;
   addHargaRutin: (h: Omit<HargaRutin, 'id'>) => void;
   updateHargaRutin: (id: string, h: Partial<HargaRutin>) => void;
   deleteHargaRutin: (id: string) => void;
+  loadHargaRutinReportGroups: () => Promise<HargaRutinReportGroup[]>;
+  saveHargaRutinReport: (params: {
+    activeBatchId: string | null;
+    pasarId: string;
+    tanggal: Date;
+    enumerator: string;
+    signatureData: string;
+    finalize: boolean;
+    items: {
+      komoditasId: string;
+      samples: {
+        kelas: KelasKomoditas;
+        tempatUsahaId: string;
+        hargaInput: number;
+        jumlahInput: number;
+        satuanInput: import('@/types').SatuanDasar;
+      }[];
+    }[];
+    strict: boolean;
+  }) => Promise<void>;
+  deleteHargaRutinReport: (batchId: string) => Promise<void>;
   calculateHargaPelaporan: () => HargaPelaporan[];
   /** Mendapatkan kelas untuk setiap komoditas yang dijual oleh suatu TU */
   getKelasForTU: (tuId: string) => Record<string, KelasKomoditas>;
@@ -247,6 +302,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [komoditasDijual, setKomoditasDijual] = useState<KomoditasDijual[]>(() => load('komoditasDijual', defaults.mockKomoditasDijual));
   const [hargaRutin, setHargaRutin] = useState<HargaRutin[]>(() => load('hargaRutin', defaults.mockHargaRutin));
 
+  const pasarRefreshInFlight = useRef<Promise<void> | null>(null);
+  const komoditasRefreshInFlight = useRef<Promise<void> | null>(null);
+
   const persist = useCallback(<T,>(key: string, setter: React.Dispatch<React.SetStateAction<T[]>>, updater: (prev: T[]) => T[]) => {
     setter(prev => {
       const next = updater(prev);
@@ -255,139 +313,380 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  /* ===== CRUD Pasar ===== */
+  /* ===== CRUD Pasar (via /v1/admin/pasar) ===== */
+  /* ===== CRUD Pasar (via /v1/admin/pasar) ===== */
   const addPasar = (p: Omit<Pasar, 'id'>) => persist('pasar', setPasar, prev => [...prev, { ...p, id: uid() }]);
-  const updatePasar = (id: string, p: Partial<Pasar>) => persist('pasar', setPasar, prev => prev.map(x => x.id === id ? { ...x, ...p } : x));
-  const deletePasar = (id: string) => persist('pasar', setPasar, prev => prev.filter(x => x.id !== id));
 
-  const createPasar = useCallback(async (p: Omit<Pasar, 'id'>): Promise<Pasar | null> => {
-    try {
-      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
-      const res = await fetch(`${base}/v1/pasar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(p),
-      });
-      if (res.ok) {
-        const body = await res.json();
-        const item = (body?.data ?? body) as any;
-        const mapped: Pasar = {
-          id: item.id ?? item._id ?? item.pasar_id ?? uid(),
-          nama: item.nama ?? item.name ?? p.nama,
-          longitude: Number(item.longitude ?? item.lng ?? item.lon ?? p.longitude ?? 0),
-          latitude: Number(item.latitude ?? item.lat ?? p.latitude ?? 0),
-          alamat: item.alamat ?? item.address ?? p.alamat ?? '',
-          is_active: Number(item.is_active ?? item.isActive ?? (item.active ? 1 : 0) ?? p.is_active ?? 1),
-        };
-        persist('pasar', setPasar, prev => [...prev, mapped]);
-        return mapped;
-      }
-    } catch (err) {
-      // fallback to local
-    }
 
-    const newItem: Pasar = { ...p, id: uid() };
-    persist('pasar', setPasar, prev => [...prev, newItem]);
-    return newItem;
-  }, [persist]);
-
-  /* ===== Fetch dari API (Read only) ===== */
   const refreshPasar = useCallback(async () => {
+    if (!getAccessToken()) return;
+
     try {
-      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
-      const res = await fetch(`${base}/v1/pasar`);
-      if (!res.ok) return;
-      const body = await res.json();
-      const data = body?.data ?? body;
-      if (!Array.isArray(data)) return;
-
-      const mapped: Pasar[] = data.map((item: any) => ({
-        id: item.id ?? item._id ?? item.pasar_id ?? uid(),
-        nama: item.nama ?? item.name ?? '',
-        longitude: Number(item.longitude ?? item.lng ?? item.lon ?? 0),
-        latitude: Number(item.latitude ?? item.lat ?? 0),
-        alamat: item.alamat ?? item.address ?? '',
-        is_active: Number(item.is_active ?? item.isActive ?? (item.active ? 1 : 0)),
-      }));
-
-      if (mapped.length > 0) {
-        setPasar(mapped);
-        save('pasar', mapped);
-      }
-    } catch (err) {
-      // gagal ambil, biarkan data lokal tetap
-      // console.error('refreshPasar error', err);
+      const mapped = await fetchPasarList();
+      setPasar(mapped);
+      save('pasar', mapped);
+    } catch {
+      // biarkan data lokal tetap jika API gagal
     }
   }, []);
+
+  const createPasar = useCallback(async (p: Omit<Pasar, 'id'>): Promise<Pasar> => {
+    const created = await createPasarApi(p);
+    persist('pasar', setPasar, prev => [...prev, created]);
+    return created;
+  }, [persist]);
+
+  const updatePasar = useCallback(async (id: string, p: Partial<Pasar>): Promise<Pasar> => {
+    const updated = await updatePasarApi(id, p);
+    persist('pasar', setPasar, prev => prev.map(x => x.id === id ? updated : x));
+    return updated;
+  }, [persist]);
+
+  const deletePasar = useCallback(async (id: string): Promise<void> => {
+    await deletePasarApi(id);
+    persist('pasar', setPasar, prev => prev.map(x => x.id === id ? { ...x, is_active: 0 } : x));
+  }, [persist]);
 
   const refreshKomoditas = useCallback(async () => {
     try {
-      const base = ((import.meta as any).env?.VITE_API_BASE_URL as string) || 'http://127.0.0.1:8080';
-      const res = await fetch(`${base}/v1/komoditas`);
-      if (!res.ok) return;
-      const body = await res.json();
-      const data = body?.data ?? body;
-      if (!Array.isArray(data)) return;
-
-      const mapped: Komoditas[] = data.map((item: any) => ({
-        id: item.id ?? item._id ?? item.komoditas_id ?? uid(),
-        nama: item.nama ?? item.name ?? '',
-        satuan_dasar: (item.satuan_dasar ?? item.satuan ?? 'kg') as any,
-        gambar: item.gambar ?? item.image ?? '',
-      }));
-
-      if (mapped.length > 0) {
-        setKomoditas(mapped);
-        save('komoditas', mapped);
-      }
-    } catch (err) {
+      const mapped = await fetchKomoditasList();
+      setKomoditas(mapped);
+      save('komoditas', mapped);
+    } catch {
       // gagal ambil, biarkan data lokal tetap
     }
   }, []);
 
-  // Jalankan sekali saat provider mount
+  // Jalankan sekali saat provider mount (komoditas saja; pasar di-load di PasarPage)
   useEffect(() => {
-    void refreshPasar();
     void refreshKomoditas();
-  }, [refreshPasar, refreshKomoditas]);
+  }, [refreshKomoditas]);
 
   /* ===== CRUD Komoditas ===== */
   const addKomoditas = (k: Omit<Komoditas, 'id'>) => persist('komoditas', setKomoditas, prev => [...prev, { ...k, id: uid() }]);
-  const updateKomoditas = (id: string, k: Partial<Komoditas>) => persist('komoditas', setKomoditas, prev => prev.map(x => x.id === id ? { ...x, ...k } : x));
+
+  const createKomoditas = useCallback(async (
+    k: Omit<Komoditas, 'id'>,
+    imageFile?: File | null,
+  ): Promise<Komoditas> => {
+    let created = await createKomoditasApi({
+      nama: k.nama,
+      satuan_dasar: k.satuan_dasar,
+    });
+
+    if (imageFile) {
+      created = await uploadKomoditasGambarApi(created.id, imageFile);
+    }
+
+    persist('komoditas', setKomoditas, prev => [...prev, created]);
+    return created;
+  }, [persist]);
+
+  const updateKomoditas = useCallback(async (
+    id: string,
+    k: Partial<Komoditas>,
+    imageFile?: File | null,
+  ): Promise<Komoditas> => {
+    let updated = await updateKomoditasApi(id, {
+      nama: k.nama,
+      satuan_dasar: k.satuan_dasar,
+    });
+
+    if (imageFile) {
+      updated = await uploadKomoditasGambarApi(id, imageFile);
+    }
+
+    persist('komoditas', setKomoditas, prev => prev.map(x => x.id === id ? updated : x));
+    return updated;
+  }, [persist]);
+
   const deleteKomoditas = (id: string) => persist('komoditas', setKomoditas, prev => prev.filter(x => x.id !== id));
 
-  /* ===== CRUD Tempat Usaha ===== */
+  /* ===== CRUD Tempat Usaha (via /v1/admin/tempat-usaha) ===== */
   const addTempatUsaha = (t: Omit<TempatUsaha, 'id'>) => persist('tempatUsaha', setTempatUsaha, prev => [...prev, { ...t, id: uid() }]);
-  const updateTempatUsaha = (id: string, t: Partial<TempatUsaha>) => persist('tempatUsaha', setTempatUsaha, prev => prev.map(x => x.id === id ? { ...x, ...t } : x));
-  const deleteTempatUsaha = (id: string) => persist('tempatUsaha', setTempatUsaha, prev => prev.filter(x => x.id !== id));
 
-  /* ===== CRUD Komoditas Dijual ===== */
-  /** Menghitung standardized stock per hari */
-  const calcStockPerDay = (k: { nilai_stok: number; nilai_periode: number; periode_unit: PeriodeUnit }) => {
-    const totalDays = k.nilai_periode * PERIODE_TO_DAYS[k.periode_unit];
-    return totalDays > 0 ? Math.round((k.nilai_stok / totalDays) * 100) / 100 : 0;
-  };
+  const refreshTempatUsaha = useCallback(async () => {
+    if (!getAccessToken()) return;
+
+    try {
+      const mapped = await fetchTempatUsahaList();
+      setTempatUsaha(prev => {
+        const merged = mapped.map(item => {
+          const existing = prev.find(x => x.id === item.id);
+          return {
+            ...item,
+            nama_narahubung: existing?.nama_narahubung ?? item.nama_narahubung,
+            nomor_narahubung: existing?.nomor_narahubung ?? item.nomor_narahubung,
+            berjualan_sejak: existing?.berjualan_sejak ?? item.berjualan_sejak,
+          };
+        });
+        save('tempatUsaha', merged);
+        return merged;
+      });
+    } catch {
+      // biarkan data lokal tetap jika API gagal
+    }
+  }, []);
+
+  const createTempatUsaha = useCallback(async (t: Omit<TempatUsaha, 'id'>): Promise<TempatUsaha> => {
+    const created = await createTempatUsahaApi(t);
+    persist('tempatUsaha', setTempatUsaha, prev => [...prev, created]);
+    return created;
+  }, [persist]);
+
+  const updateTempatUsaha = useCallback(async (id: string, t: Partial<TempatUsaha>): Promise<TempatUsaha> => {
+    const existing = tempatUsaha.find(x => x.id === id);
+    const updated = await updateTempatUsahaApi(id, t);
+    const mapped: TempatUsaha = {
+      ...updated,
+      nama_narahubung: t.nama_narahubung ?? existing?.nama_narahubung ?? updated.nama_narahubung,
+      nomor_narahubung: t.nomor_narahubung ?? existing?.nomor_narahubung ?? updated.nomor_narahubung,
+      berjualan_sejak: t.berjualan_sejak ?? existing?.berjualan_sejak ?? updated.berjualan_sejak,
+    };
+    persist('tempatUsaha', setTempatUsaha, prev => prev.map(x => x.id === id ? mapped : x));
+    return mapped;
+  }, [persist, tempatUsaha]);
+
+  const deleteTempatUsaha = useCallback(async (id: string): Promise<void> => {
+    await deleteTempatUsahaApi(id);
+    persist('tempatUsaha', setTempatUsaha, prev => prev.map(x => x.id === id ? { ...x, is_active: 0 } : x));
+  }, [persist]);
+
+  /* ===== CRUD Komoditas Dijual (via /v1/admin/komoditas-dijual) ===== */
+
+  const refreshKomoditasDijual = useCallback(async (tempatUsahaId?: string) => {
+    if (!getAccessToken()) return;
+
+    try {
+      const mapped = await fetchKomoditasDijualList(
+        tempatUsahaId ? { id_tempat_usaha: tempatUsahaId } : undefined,
+      );
+
+      setKomoditasDijual(prev => {
+        if (tempatUsahaId) {
+          const others = prev.filter(kd => kd.tempat_usaha_id !== tempatUsahaId);
+          const next = [...others, ...mapped];
+          save('komoditasDijual', next);
+          return next;
+        }
+        save('komoditasDijual', mapped);
+        return mapped;
+      });
+    } catch {
+      // biarkan data lokal tetap jika API gagal
+    }
+  }, []);
+
+  const refreshKomoditasDijual = useCallback(async (tempatUsahaId?: string) => {
+    if (!getAccessToken()) return;
+
+    try {
+      const mapped = await fetchKomoditasDijualList(
+        tempatUsahaId ? { id_tempat_usaha: tempatUsahaId } : undefined,
+      );
+
+      setKomoditasDijual(prev => {
+        if (tempatUsahaId) {
+          const others = prev.filter(kd => kd.tempat_usaha_id !== tempatUsahaId);
+          const next = [...others, ...mapped];
+          save('komoditasDijual', next);
+          return next;
+        }
+        save('komoditasDijual', mapped);
+        return mapped;
+      });
+    } catch {
+      // biarkan data lokal tetap jika API gagal
+    }
+  }, []);
 
   const addKomoditasDijual = (k: Omit<KomoditasDijual, 'id'>) => {
     const newItem = { ...k, id: uid() };
-    newItem.standardized_stock_periode = calcStockPerDay(newItem);
+    newItem.standardized_stock_periode = calcStandardizedStockPerDay(newItem.nilai_stok, newItem.nilai_periode, newItem.periode_unit);
     persist('komoditasDijual', setKomoditasDijual, prev => [...prev, newItem]);
   };
 
-  const updateKomoditasDijual = (id: string, k: Partial<KomoditasDijual>) => {
-    persist('komoditasDijual', setKomoditasDijual, prev => prev.map(x => {
-      if (x.id !== id) return x;
-      const updated = { ...x, ...k };
-      updated.standardized_stock_periode = calcStockPerDay(updated);
-      return updated;
-    }));
-  };
-  const deleteKomoditasDijual = (id: string) => persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
+  const createKomoditasDijual = useCallback(async (k: Omit<KomoditasDijual, 'id'>): Promise<KomoditasDijual> => {
+    const withStd: Omit<KomoditasDijual, 'id'> = {
+      ...k,
+      standardized_stock_periode: calcStandardizedStockPerDay(k.nilai_stok, k.nilai_periode, k.periode_unit),
+    };
+    const created = await createKomoditasDijualApi(withStd);
+    persist('komoditasDijual', setKomoditasDijual, prev => [...prev, created]);
+    return created;
+  }, [persist]);
 
-  /* ===== CRUD Harga Rutin ===== */
+  const updateKomoditasDijual = useCallback(async (id: string, k: Partial<KomoditasDijual>): Promise<KomoditasDijual> => {
+    if (!komoditasDijual.find(x => x.id === id)) {
+      throw new Error('Komoditas dijual tidak ditemukan');
+    }
+    const updated = await updateKomoditasDijualApi(id, k);
+    persist('komoditasDijual', setKomoditasDijual, prev => prev.map(x => x.id === id ? updated : x));
+    return updated;
+  }, [komoditasDijual, persist]);
+
+  const deleteKomoditasDijual = useCallback(async (id: string): Promise<void> => {
+    await deleteKomoditasDijualApi(id);
+    persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
+  }, [persist]);
+
+  const deleteKomoditasDijual = useCallback(async (id: string): Promise<void> => {
+    await deleteKomoditasDijualApi(id);
+    persist('komoditasDijual', setKomoditasDijual, prev => prev.filter(x => x.id !== id));
+  }, [persist]);
+
+  /* ===== CRUD Harga Rutin (legacy local) ===== */
   const addHargaRutin = (h: Omit<HargaRutin, 'id'>) => persist('hargaRutin', setHargaRutin, prev => [...prev, { ...h, id: uid() }]);
   const updateHargaRutin = (id: string, h: Partial<HargaRutin>) => persist('hargaRutin', setHargaRutin, prev => prev.map(x => x.id === id ? { ...x, ...h } : x));
   const deleteHargaRutin = (id: string) => persist('hargaRutin', setHargaRutin, prev => prev.filter(x => x.id !== id));
+
+  const loadHargaRutinReportGroups = useCallback(async (): Promise<HargaRutinReportGroup[]> => {
+    if (!getAccessToken()) return [];
+
+    const [batches, allEntries] = await Promise.all([
+      fetchPengumpulanDataList({ limit: 1000 }),
+      fetchHargaRutinList({ limit: 10000 }),
+    ]);
+
+    const entriesByBatch = new Map<string, typeof allEntries>();
+    allEntries.forEach((entry) => {
+      const list = entriesByBatch.get(entry.id_pengumpulan_data) ?? [];
+      list.push(entry);
+      entriesByBatch.set(entry.id_pengumpulan_data, list);
+    });
+
+    return batches
+      .map((batch) => {
+        const meta = decodeCatatan(batch.catatan);
+        return {
+          id: batch.id,
+          tanggal: parseApiDate(batch.tanggal),
+          pasarId: batch.id_pasar,
+          enumerator: meta.enumerator,
+          signatureData: meta.signature_url ?? meta.signature_data,
+          status: batch.status === 1 ? 'final' as const : 'draft' as const,
+          entries: entriesByBatch.get(batch.id) ?? [],
+        };
+      })
+      .sort((a, b) => b.tanggal.localeCompare(a.tanggal));
+  }, []);
+
+  const saveHargaRutinReport = useCallback(async (params: {
+    activeBatchId: string | null;
+    pasarId: string;
+    tanggal: Date;
+    enumerator: string;
+    signatureData: string;
+    finalize: boolean;
+    items: {
+      komoditasId: string;
+      samples: {
+        kelas: KelasKomoditas;
+        tempatUsahaId: string;
+        hargaInput: number;
+        jumlahInput: number;
+        satuanInput: import('@/types').SatuanDasar;
+      }[];
+    }[];
+    strict: boolean;
+  }) => {
+    const desired: {
+      komoditasId: string;
+      kelas: KelasKomoditas;
+      tempatUsahaId: string;
+      harga: number;
+    }[] = [];
+
+    params.items.forEach((item) => {
+      const kom = komoditas.find((k) => k.id === item.komoditasId);
+      const satuanDasar = kom?.satuan_dasar ?? 'kg';
+      item.samples.forEach((sample) => {
+        if (!sample.tempatUsahaId || sample.hargaInput <= 0 || sample.jumlahInput <= 0) return;
+        const harga = hitungHargaStandar(
+          sample.hargaInput,
+          sample.jumlahInput,
+          sample.satuanInput,
+          satuanDasar,
+        );
+        if (harga < 1) return;
+        desired.push({
+          komoditasId: item.komoditasId,
+          kelas: sample.kelas,
+          tempatUsahaId: sample.tempatUsahaId,
+          harga,
+        });
+      });
+    });
+
+    if (params.finalize && desired.length === 0) {
+      throw new Error('Tidak ada data harga yang valid untuk disimpan');
+    }
+
+    const catatanMeta = {
+      enumerator: params.enumerator.trim(),
+      ...(params.signatureData && !params.signatureData.startsWith('data:')
+        ? { signature_url: params.signatureData }
+        : {}),
+    };
+    const catatan = encodeCatatan(catatanMeta);
+    let batchId = params.activeBatchId;
+
+    if (!batchId) {
+      const created = await createPengumpulanDataApi({
+        id_pasar: params.pasarId,
+        tanggal: formatDateForApi(params.tanggal),
+        catatan,
+      });
+      batchId = created.id;
+    } else {
+      await updatePengumpulanDataApi(batchId, { catatan });
+    }
+
+    if (params.signatureData.startsWith('data:')) {
+      const file = await dataUrlToFile(params.signatureData);
+      await uploadPengumpulanTandaTanganApi(batchId, file);
+    }
+
+    const existing = await fetchHargaRutinList({ id_pengumpulan_data: batchId });
+    const desiredKeys = new Set(desired.map((r) => `${r.komoditasId}__${r.kelas}`));
+
+    for (const ex of existing) {
+      const key = `${ex.id_komoditas}__${ex.kelas_komoditas}`;
+      if (!desiredKeys.has(key)) {
+        await deleteHargaRutinApi(ex.id);
+      }
+    }
+
+    for (const row of desired) {
+      const ex = existing.find(
+        (e) => e.id_komoditas === row.komoditasId && e.kelas_komoditas === row.kelas,
+      );
+      if (ex) {
+        if (ex.harga !== row.harga || ex.id_tempat_usaha !== row.tempatUsahaId) {
+          await updateHargaRutinApi(ex.id, {
+            id_tempat_usaha: row.tempatUsahaId,
+            harga: row.harga,
+          });
+        }
+      } else {
+        await createHargaRutinApi({
+          id_pengumpulan_data: batchId,
+          id_tempat_usaha: row.tempatUsahaId,
+          id_komoditas: row.komoditasId,
+          kelas_komoditas: row.kelas,
+          harga: row.harga,
+        });
+      }
+    }
+
+    if (params.finalize) {
+      await finalizePengumpulanDataApi(batchId);
+    }
+  }, [komoditas]);
+
+  const deleteHargaRutinReport = useCallback(async (batchId: string) => {
+    await deletePengumpulanDataApi(batchId);
+  }, []);
 
   /* ===== Klasifikasi Kelas Otomatis — Distribusi Normal ===== */
   /**
@@ -439,12 +738,20 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Mendapatkan kelas untuk semua TU yang menjual komoditas tertentu di pasar tertentu.
    */
   const getKelasForKomoditasInPasar = useCallback((pasarId: string, komoditasId: string): Record<string, KelasKomoditas> => {
-    // Cari semua KD untuk komoditas ini di pasar ini
     const allKDs = komoditasDijual.filter(kd => {
       if (kd.komoditas_id !== komoditasId || !kd.is_active) return false;
       const tu = tempatUsaha.find(t => t.id === kd.tempat_usaha_id);
       return tu && tu.pasar_id === pasarId && tu.is_active === 1;
     });
+
+    const withKelas = allKDs.filter(kd => kd.kelas_komoditas);
+    if (withKelas.length > 0 && withKelas.length === allKDs.length) {
+      const result: Record<string, KelasKomoditas> = {};
+      allKDs.forEach(kd => {
+        if (kd.kelas_komoditas) result[kd.tempat_usaha_id] = kd.kelas_komoditas;
+      });
+      return result;
+    }
 
     const items = allKDs.map(kd => ({
       tuId: kd.tempat_usaha_id,
@@ -504,11 +811,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{
       pasar, setPasar, komoditas, setKomoditas, tempatUsaha, setTempatUsaha,
       komoditasDijual, setKomoditasDijual, hargaRutin, setHargaRutin, hargaPelaporan,
-      refreshPasar, refreshKomoditas,
+      refreshPasar, refreshKomoditas, refreshTempatUsaha, refreshKomoditasDijual,
       addPasar, createPasar, updatePasar, deletePasar,
-      addKomoditas, updateKomoditas, deleteKomoditas,
-      addTempatUsaha, updateTempatUsaha, deleteTempatUsaha,
-      addKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual,
+      addKomoditas, createKomoditas, updateKomoditas, deleteKomoditas,
+      addTempatUsaha, createTempatUsaha, updateTempatUsaha, deleteTempatUsaha,
+      addKomoditasDijual, createKomoditasDijual, updateKomoditasDijual, deleteKomoditasDijual,
       addHargaRutin, updateHargaRutin, deleteHargaRutin, calculateHargaPelaporan,
       getKelasForTU, getKelasForKomoditasInPasar,
     }}>
