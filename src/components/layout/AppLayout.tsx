@@ -10,6 +10,7 @@ import {
   Building2,
   ClipboardList,
   BarChart3,
+  LineChart,
   Menu,
   X,
   LogOut,

@@ -47,6 +47,7 @@ const AppRoutes = () => (
       path="/"
       element={
         <LandingRoute>
+          \
           <LandingPage />
         </LandingRoute>
       }
