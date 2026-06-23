@@ -49,6 +49,7 @@ import {
   deleteKomoditasDijualApi,
 } from "@/lib/komoditas-dijual-api";
 import { getAccessToken } from "@/lib/api";
+import { useAuth } from "@/contexts/AuthContext";
 import { hitungHargaStandar } from "@/types";
 import {
   fetchHargaRutinList,
@@ -1116,6 +1117,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
   const defaults = generateMockData();
+  const { isAuthenticated } = useAuth();
 
   const [pasar, setPasar] = useState<Pasar[]>(() =>
     load("pasar", defaults.mockPasar),
@@ -1198,6 +1200,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
   );
 
   const refreshKomoditas = useCallback(async () => {
+    if (!getAccessToken()) return;
     try {
       const mapped = await fetchKomoditasList();
       setKomoditas(mapped);
@@ -1207,10 +1210,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, []);
 
-  // Jalankan sekali saat provider mount (komoditas saja; pasar di-load di PasarPage)
+  // Jalankan setelah login berhasil (isAuthenticated berubah jadi true)
   useEffect(() => {
-    void refreshKomoditas();
-  }, [refreshKomoditas]);
+    if (isAuthenticated) {
+      void refreshKomoditas();
+    }
+  }, [isAuthenticated, refreshKomoditas]);
 
   /* ===== CRUD Komoditas ===== */
   const addKomoditas = (k: Omit<Komoditas, "id">) =>
