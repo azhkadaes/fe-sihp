@@ -6,7 +6,10 @@
  * Harga pelaporan = rata-rata dari harga 3 kelas (besar, menengah, kecil)
  * untuk setiap kombinasi tanggal + pasar + komoditas.
  */
+import { useCallback, useEffect, useState } from "react";
 import { useData } from "@/contexts/DataContext";
+import { loadHargaPelaporanPageData } from "@/lib/harga-pelaporan-api";
+import type { HargaPelaporan } from "@/types";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,18 +34,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useState } from "react";
-import { Download, Search, FileText, ArrowUpDown } from "lucide-react";
+import { Download, Search, FileText, ArrowUpDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/lib/csv-utils";
 
 export default function HargaPelaporanPage() {
-  const { hargaPelaporan, komoditas, pasar } = useData();
+  const { komoditas, pasar, refreshPasar, refreshKomoditas } = useData();
   const isMobile = useIsMobile();
 
   /* ===== State ===== */
+  const [hargaPelaporan, setHargaPelaporan] = useState<HargaPelaporan[]>([]);
+  const [loading, setLoading] = useState(true);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterPasar, setFilterPasar] = useState<string>("all");
@@ -56,6 +59,27 @@ export default function HargaPelaporanPage() {
     | "harga_rata_rata"
   >("tanggal");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const refreshPageData = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([refreshPasar(), refreshKomoditas()]);
+      const data = await loadHargaPelaporanPageData({
+        id_pasar: filterPasar === "all" ? undefined : filterPasar,
+      });
+      setHargaPelaporan(data);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal memuat data harga pelaporan",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [filterPasar, refreshPasar, refreshKomoditas]);
+
+  useEffect(() => {
+    void refreshPageData();
+  }, [refreshPageData]);
 
   /* ===== Detail lookup ===== */
   const detail = hargaPelaporan.find((h) => h.id === detailId);
@@ -277,8 +301,18 @@ export default function HargaPelaporanPage() {
         </Select>
       </div>
 
+      {/* Loading */}
+      {loading && (
+        <Card>
+          <CardContent className="py-12 flex items-center justify-center gap-2 text-muted-foreground text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Memuat data harga pelaporan...
+          </CardContent>
+        </Card>
+      )}
+
       {/* State kosong */}
-      {filtered.length === 0 && (
+      {!loading && filtered.length === 0 && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground text-sm">
             Belum ada data. Finalisasi harga rutin untuk menghasilkan harga
@@ -288,7 +322,7 @@ export default function HargaPelaporanPage() {
       )}
 
       {/* ===== Tampilan Data ===== */}
-      {isMobile ? (
+      {!loading && isMobile ? (
         /* --- Tampilan kartu untuk mobile --- */
         <div className="space-y-2">
           {filtered.map((h) => {
@@ -322,7 +356,7 @@ export default function HargaPelaporanPage() {
             );
           })}
         </div>
-      ) : (
+      ) : !loading ? (
         /* --- Tampilan tabel untuk desktop --- */
         <Card>
           <Table>
@@ -449,7 +483,7 @@ export default function HargaPelaporanPage() {
             </TableBody>
           </Table>
         </Card>
-      )}
+      ) : null}
 
       {/* ===== Dialog Detail ===== */}
       <Dialog open={!!detailId} onOpenChange={() => setDetailId(null)}>

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useData } from '@/contexts/DataContext';
 import type { Komoditas, SatuanDasar } from '@/types';
 import { SATUAN_DASAR_OPTIONS } from '@/types';
@@ -21,17 +21,23 @@ type SortDir = 'asc' | 'desc';
 const emptyKomoditas: Omit<Komoditas, 'id'> = { nama: '', satuan_dasar: 'kg', gambar: '' };
 
 export default function KomoditasPage() {
-  const { komoditas, addKomoditas, updateKomoditas, deleteKomoditas } = useData();
+  const { komoditas, createKomoditas, updateKomoditas, refreshKomoditas } = useData();
   const isMobile = useIsMobile();
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Komoditas | null>(null);
   const [form, setForm] = useState<Omit<Komoditas, 'id'>>(emptyKomoditas);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [sortField, setSortField] = useState<SortField>('nama');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [filterSatuan, setFilterSatuan] = useState<string>('all');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imgInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    void refreshKomoditas();
+  }, [refreshKomoditas]);
 
   const filtered = komoditas
     .filter(k => k.nama.toLowerCase().includes(search.toLowerCase()))
@@ -46,24 +52,52 @@ export default function KomoditasPage() {
     else { setSortField(field); setSortDir('asc'); }
   };
 
-  const openAdd = () => { setEditing(null); setForm(emptyKomoditas); setDialogOpen(true); };
-  const openEdit = (k: Komoditas) => { setEditing(k); setForm({ nama: k.nama, satuan_dasar: k.satuan_dasar, gambar: k.gambar }); setDialogOpen(true); };
+  const openAdd = () => {
+    setEditing(null);
+    setForm(emptyKomoditas);
+    setImageFile(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (k: Komoditas) => {
+    setEditing(k);
+    setForm({ nama: k.nama, satuan_dasar: k.satuan_dasar, gambar: k.gambar });
+    setImageFile(null);
+    setDialogOpen(true);
+  };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { toast.error('Ukuran gambar maksimal 2MB'); return; }
+    setImageFile(file);
     const reader = new FileReader();
     reader.onload = () => setForm(prev => ({ ...prev, gambar: reader.result as string }));
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nama.trim()) { toast.error('Nama komoditas wajib diisi'); return; }
-    if (editing) { updateKomoditas(editing.id, form); toast.success('Komoditas diperbarui'); }
-    else { addKomoditas(form); toast.success('Komoditas ditambahkan'); }
-    setDialogOpen(false);
+
+    setSubmitting(true);
+    try {
+      if (editing) {
+        await updateKomoditas(editing.id, form, imageFile);
+        toast.success('Komoditas diperbarui');
+      } else {
+        await createKomoditas(form, imageFile);
+        toast.success('Komoditas ditambahkan');
+      }
+      setDialogOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Terjadi kesalahan saat menyimpan data');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = () => {
+    toast.error('Hapus komoditas belum tersedia di backend');
   };
 
   const handleExport = () => {
@@ -78,16 +112,25 @@ export default function KomoditasPage() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       const rows = parseCSV(reader.result as string);
       let count = 0;
-      rows.forEach(r => {
-        if (r['Nama']?.trim()) {
-          addKomoditas({ nama: r['Nama'].trim(), satuan_dasar: (r['Satuan Dasar'] as SatuanDasar) || 'kg', gambar: '' });
+      let failed = 0;
+      for (const r of rows) {
+        if (!r['Nama']?.trim()) continue;
+        try {
+          await createKomoditas({
+            nama: r['Nama'].trim(),
+            satuan_dasar: (r['Satuan Dasar'] as SatuanDasar) || 'kg',
+            gambar: '',
+          });
           count++;
+        } catch {
+          failed++;
         }
-      });
-      toast.success(`${count} komoditas diimpor`);
+      }
+      if (count > 0) toast.success(`${count} komoditas diimpor`);
+      if (failed > 0) toast.error(`${failed} baris gagal diimpor`);
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -142,7 +185,7 @@ export default function KomoditasPage() {
                         <Upload className="h-4 w-4 mr-1" /> Upload
                       </Button>
                       {form.gambar && (
-                        <Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, gambar: '' })} className="text-destructive">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => { setForm({ ...form, gambar: '' }); setImageFile(null); }} className="text-destructive">
                           Hapus
                         </Button>
                       )}
@@ -151,8 +194,8 @@ export default function KomoditasPage() {
                   <input ref={imgInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   <p className="text-xs text-muted-foreground">Maks 2MB. Format: JPG, PNG, WebP</p>
                 </div>
-                <Button type="submit" className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
-                  {editing ? 'Perbarui' : 'Simpan'}
+                <Button type="submit" disabled={submitting} className="w-full bg-accent text-accent-foreground hover:bg-accent/90">
+                  {submitting ? 'Menyimpan...' : editing ? 'Perbarui' : 'Simpan'}
                 </Button>
               </form>
             </DialogContent>
@@ -198,7 +241,7 @@ export default function KomoditasPage() {
                     <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader><AlertDialogTitle>Hapus Komoditas?</AlertDialogTitle><AlertDialogDescription>Data "{k.nama}" akan dihapus permanen.</AlertDialogDescription></AlertDialogHeader>
-                      <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => { deleteKomoditas(k.id); toast.success('Dihapus'); }}>Hapus</AlertDialogAction></AlertDialogFooter>
+                      <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={handleDelete}>Hapus</AlertDialogAction></AlertDialogFooter>
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
@@ -238,7 +281,7 @@ export default function KomoditasPage() {
                       <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-8 w-8"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader><AlertDialogTitle>Hapus?</AlertDialogTitle><AlertDialogDescription>Data "{k.nama}" akan dihapus.</AlertDialogDescription></AlertDialogHeader>
-                        <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={() => { deleteKomoditas(k.id); toast.success('Dihapus'); }}>Hapus</AlertDialogAction></AlertDialogFooter>
+                        <AlertDialogFooter><AlertDialogCancel>Batal</AlertDialogCancel><AlertDialogAction onClick={handleDelete}>Hapus</AlertDialogAction></AlertDialogFooter>
                       </AlertDialogContent>
                     </AlertDialog>
                   </TableCell>
